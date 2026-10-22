@@ -1,0 +1,57 @@
+{
+  "description": "Northlight US books, March 2026. A balanced wage entry posts, an unbalanced entry is rejected, and a locked month stays locked.",
+  "entity": "US",
+  "period": "2026-03",
+  "expected_posted_entries": 1,
+  "steps": [
+    {
+      "action": "open_period",
+      "entity": "US",
+      "period": "2026-03"
+    },
+    {
+      "action": "post",
+      "name": "balanced_entry_posts",
+      "entity_code": "US",
+      "period": "2026-03",
+      "memo": "US G&A wages for March 2026",
+      "lines": [
+        {"account_code": "5000", "debit": "18400.00", "credit": "0.00", "department": "G&A"},
+        {"account_code": "2100", "debit": "0.00", "credit": "14200.00"},
+        {"account_code": "2200", "debit": "0.00", "credit": "4200.00"}
+      ],
+      "expect": {"status": 201, "total": "18400.00"}
+    },
+    {
+      "action": "post",
+      "name": "unbalanced_entry_rejected",
+      "entity_code": "US",
+      "period": "2026-03",
+      "memo": "US G&A wages for March 2026 with withholdings short",
+      "lines": [
+        {"account_code": "5000", "debit": "18400.00", "credit": "0.00", "department": "G&A"},
+        {"account_code": "2100", "debit": "0.00", "credit": "14200.00"},
+        {"account_code": "2200", "debit": "0.00", "credit": "4000.00"}
+      ],
+      "expect": {"status": 422, "error": "unbalanced_journal"}
+    },
+    {
+      "action": "lock_period",
+      "entity": "US",
+      "period": "2026-03"
+    },
+    {
+      "action": "post",
+      "name": "locked_period_rejected",
+      "entity_code": "US",
+      "period": "2026-03",
+      "memo": "US G&A wages accrual after March close",
+      "lines": [
+        {"account_code": "5000", "debit": "18400.00", "credit": "0.00", "department": "G&A"},
+        {"account_code": "2100", "debit": "0.00", "credit": "14200.00"},
+        {"account_code": "2200", "debit": "0.00", "credit": "4200.00"}
+      ],
+      "expect": {"status": 409, "error": "period_locked"}
+    }
+  ]
+}

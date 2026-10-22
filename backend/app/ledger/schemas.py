@@ -1,0 +1,62 @@
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class LineIn(BaseModel):
+    account_code: str
+    debit: str
+    credit: str
+    department: str | None = None
+
+
+class JournalIn(BaseModel):
+    entity_code: str
+    period: str
+    memo: str = Field(min_length=1, max_length=500)
+    lines: list[LineIn] = Field(min_length=2)
+
+
+class LineOut(BaseModel):
+    line_number: int
+    account_code: str
+    account_name: str
+    debit: str
+    credit: str
+    department: str | None
+
+
+class JournalOut(BaseModel):
+    id: str
+    number: str
+    entity_code: str
+    currency: str
+    period: str
+    memo: str
+    status: str
+    posted_by: str
+    total_debit: str
+    total_credit: str
+    lines: list[LineOut]
+
+
+class PeriodOut(BaseModel):
+    entity_code: str
+    period: str
+    status: str
+    locked_by: str | None
+
+
+class EntityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    name: str
+    currency: str
+
+
+class AccountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    name: str
+    account_type: str
+    normal_balance: str

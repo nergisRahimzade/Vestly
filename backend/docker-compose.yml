@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: vestly
+      POSTGRES_PASSWORD: vestly
+      POSTGRES_DB: vestly
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vestly -d vestly"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
