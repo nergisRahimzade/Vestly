@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
 from app.auth.permissions import WORLD_LOAD, require
+from app.errors import ContextError, doing
 from app.ledger.chart import ENTITIES as ENTITY_ROWS
 from app.ledger.errors import LedgerError
 from app.ledger.service import import_posted_entry, lock_period, open_period, parse_period
@@ -52,7 +53,8 @@ def load_world(session: Session, actor: Actor) -> dict:
     )
     session.commit()
     for period in sorted(MONTHS):
-        load_drop(session, read_drop_file(period), actor)
+        with doing("loading the shipped world", period=period):
+            load_drop(session, read_drop_file(period), actor)
     seed_march_ruling(session, actor)
     session.add(WorldLoad(version=WORLD_VERSION, loaded_at=datetime.now(timezone.utc)))
     session.commit()
@@ -60,7 +62,9 @@ def load_world(session: Session, actor: Actor) -> dict:
 
 
 def read_drop_file(period: str) -> dict:
-    return json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
+    path = fixture_dir() / f"{period}.json"
+    with doing("reading the file drop", file=path.name):
+        return json.loads(path.read_text(encoding="utf-8"))
 
 
 def load_drop(session: Session, drop: dict, actor: Actor) -> dict:
@@ -80,7 +84,11 @@ def load_drop(session: Session, drop: dict, actor: Actor) -> dict:
         if existing.content_hash == digest:
             return {"status": "already_loaded", "period": period}
         raise LedgerError("drop_conflict", f"A different {period} drop is already loaded.", 409)
-    documents = store_drop(session, drop)
+    try:
+        documents = store_drop(session, drop)
+    except ContextError as exc:
+        session.rollback()
+        raise LedgerError("invalid_drop", f"The {period} drop could not be stored, {exc.describe()}", 422) from exc
     record(
         session,
         actor.handle,
@@ -104,7 +112,8 @@ def load_drop(session: Session, drop: dict, actor: Actor) -> dict:
     session.commit()
     _refresh_people(session)
     session.commit()
-    _book_history(session, drop, actor)
+    with doing("booking the old process's ledger history", period=period):
+        _book_history(session, drop, actor)
     return {"status": "loaded", "period": period, "closed": bool(drop["close_period"])}
 
 
@@ -172,28 +181,36 @@ def store_drop(session: Session, drop: dict) -> list[SourceDocument]:
     equity = documents["equity"]
     bank = documents["bank"]
     ledger = documents["ledger"]
-    session.add_all(HrCensusRow(document_id=hr.id, period=period, **row) for row in drop["hr"])
-    session.add_all(PayrollRegisterRow(document_id=payroll.id, period=period, **row) for row in drop["payroll"])
-    session.add_all(FundingInstruction(document_id=payroll.id, period=period, **row) for row in drop["funding"])
-    session.add_all(EquitySnapshot(document_id=equity.id, period=period, **row) for row in drop["equity"])
-    session.add_all(BankLine(document_id=bank.id, period=period, **row) for row in drop["bank"])
-    for entry in drop.get("ledger_entries", []):
-        currency = CURRENCY[entry["entity_code"]]
-        session.add_all(
-            LedgerExportLine(
-                document_id=ledger.id,
-                period=period,
-                entity_code=entry["entity_code"],
-                entry_memo=entry["memo"],
-                kind=entry["kind"],
-                currency=currency,
-                account_code=line["account_code"],
-                department=line["department"],
-                debit=line["debit"],
-                credit=line["credit"],
+    for section, model, document in (
+        ("hr", HrCensusRow, hr),
+        ("payroll", PayrollRegisterRow, payroll),
+        ("funding", FundingInstruction, payroll),
+        ("equity", EquitySnapshot, equity),
+        ("bank", BankLine, bank),
+    ):
+        for index, row in enumerate(drop[section], start=1):
+            with doing(f"storing the {section} section", period=period, row=index):
+                session.add(model(document_id=document.id, period=period, **row))
+    for index, entry in enumerate(drop.get("ledger_entries", []), start=1):
+        with doing("storing the ledger section", period=period, entry=index):
+            currency = CURRENCY[entry["entity_code"]]
+            session.add_all(
+                LedgerExportLine(
+                    document_id=ledger.id,
+                    period=period,
+                    entity_code=entry["entity_code"],
+                    entry_memo=entry["memo"],
+                    kind=entry["kind"],
+                    currency=currency,
+                    account_code=line["account_code"],
+                    department=line["department"],
+                    debit=line["debit"],
+                    credit=line["credit"],
+                )
+                for line in entry["lines"]
             )
-            for line in entry["lines"]
-        )
+    with doing("writing the drop's rows to the database", period=period):
+        session.flush()
     return list(documents.values())
 
 

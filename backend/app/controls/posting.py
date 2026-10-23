@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.identities import PAYROLL_SEAT, Actor
 from app.controls.callbacks import check_pay_destination
+from app.errors import ContextError
 from app.controls.clock import today
 from app.controls.gate import check_role, deny, enforce
 from app.controls.models import BankTransfer, FundingLine, FundingRequest
@@ -221,6 +222,10 @@ def send_unconfirmed(session: Session, request: FundingRequest, by: str) -> dict
             sent.append(line.payment_id)
         except BankTimeout:
             timed_out.append(line.payment_id)
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise ContextError("sending a payment to the bank", {"payment": line.payment_id, "key": line.idempotency_key, "request": request.id}, exc) from exc
         record(
             session,
             by,

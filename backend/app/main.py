@@ -57,6 +57,18 @@ def handle_ledger_error(_request: Request, exc: LedgerError) -> JSONResponse:
     return JSONResponse(status_code=exc.status, content=content)
 
 
+@app.exception_handler(Exception)
+def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
+    """Anything nobody planned for: log where (file, line) and why, and answer with an id that matches the log."""
+    from app.errors import describe, record_error, where
+
+    error_id = record_error(exc, request=f"{request.method} {request.url.path}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "internal_error", "error_id": error_id, "where": where(exc), "message": describe(exc)},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "vestly-ledger"}

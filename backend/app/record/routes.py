@@ -203,3 +203,28 @@ def get_precedent(precedent_id: str, db: Session = Depends(get_db), _who: Actor 
     if row is None:
         raise LedgerError("unknown_precedent", f"No precedent {precedent_id}.", 404)
     return precedent_dict(row)
+
+
+@router.get("/audit/errors")
+def list_errors(limit: int = 100, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> list[dict]:
+    """Unexpected errors, newest first: where, why, and what was being done."""
+    import json as _json
+
+    from app.record.models import ErrorLog
+
+    require(who, AUDIT_READ, "read the error log")
+    rows = db.scalars(select(ErrorLog).order_by(ErrorLog.at.desc()).limit(max(1, min(limit, 1000))))
+    return [
+        {
+            "id": row.id,
+            "at": row.at,
+            "where": row.where,
+            "error_type": row.error_type,
+            "message": row.message,
+            "steps": _json.loads(row.steps_json),
+            "request": row.request,
+            "actor": row.actor,
+            "traceback": row.traceback,
+        }
+        for row in rows
+    ]

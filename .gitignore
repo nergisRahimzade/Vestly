@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 *.db
 .mypy_cache/
+
+# Secrets: API keys live here and never in git
+.env
+.env.*
+!.env.example

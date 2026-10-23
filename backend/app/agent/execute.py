@@ -92,5 +92,11 @@ def _run(ctx: AgentContext, name: str, raw_input: dict) -> ToolResult:
         ctx.session.rollback()
         return ToolResult.failed(f"{exc.code}: {exc.message}")
     except Exception as exc:  # a crash is a failed result the model must report; never retried here
+        from app.errors import describe, record_error, where
+
         ctx.session.rollback()
-        return ToolResult.failed(f"{type(exc).__name__}: {exc}")
+        error_id = record_error(exc, request=f"tool {name} on case {getattr(ctx.case, 'key', None)}", actor=ctx.seat.handle, session=ctx.session)
+        return ToolResult.failed(
+            describe(exc),
+            {"tool": name, "case": getattr(ctx.case, "key", None), "where": where(exc), "error_id": error_id},
+        )

@@ -383,10 +383,14 @@ def extract_document(ctx, args: DocumentInput) -> ToolResult:
     from app.agent.extract import ExtractionRefused, extraction_problems, reader
 
     document = _cited_document(ctx, args.content_hash)
+    from app.agent.model import ModelCallError
+
     try:
         extraction = reader().extract(document.title, document.body)
     except ExtractionRefused as exc:
         return ToolResult.failed(f"extraction_declined: {exc}")
+    except ModelCallError as exc:
+        return ToolResult.failed(f"extraction_failed: {exc}")
     problems = extraction_problems(document.body, extraction)
     if problems:
         return ToolResult.refused(None, "Extraction refused; it states what the document does not: " + " ".join(problems))

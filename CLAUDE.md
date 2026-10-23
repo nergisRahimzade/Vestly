@@ -237,15 +237,18 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Plan: honest results (D17) | `plan/honest-claims` |
 | Task 12: agent tools, loop, Claude and scripted models, claim checker, `run_tests`, `convert_currency` | `agent/tools-and-loop` |
 | Task 13: document extraction checked against the text; free-text replies confirmed by their writer | `agent/extraction-and-answers` |
+| Plan revision (D20–D22) and the user's rules | `plan/fx-errors-live` |
+| Task 14: errors say where and why (`app/errors.py`, `error_log`, `/audit/errors`), live Claude tests | `fix/error-context` |
 
 **Plan revised 2026-10-23 (D20–D22):** real Open Exchange Rates rates at each month-end; the world aligned with today (Jan 2022–Sep 2026 closed, October 2026 open, Nov–Dec to come); four years of history for every employee; planted errors in July–December. Until task 16 lands, the code still has the January–June world with June open (section 10).
 
-**Next: task 14 `fix/error-context`** (pull from `plan/fx-errors-live`), then 15 Open Exchange Rates, 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
+**Next: task 15 `fx/open-exchange-rates`** (pull from `fix/error-context`), then 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
 - Run tests: `backend/.venv/Scripts/python.exe -m pytest -q` from `backend/` (or `backend/scripts/test.ps1`). ~100 tests, ~40 s.
 - Postgres guard tests need Docker (`backend/docker-compose.yml`); they skip when it's down (it was up on 2026-10-23, and they ran).
+- Keys live in the git-ignored `.env` at the repo root (`ANTHROPIC_API_KEY`, `OPENEXCHANGERATES_API_KEY`); `app/config.py` reads it without overriding the environment. Live Claude tests (`-m live`) skip with the reason when the key is missing or the account has no credit (it had none on 2026-10-23).
 - The agent runs scripted by default (no API key needed). `VESTLY_MODEL_MODE=claude` switches to Claude (`VESTLY_MODEL` overrides the model id; credentials from the environment). The `anthropic` SDK is pinned in `requirements.txt`.
 - Regenerate fixtures after generator changes: `python -c "from app.world.drops import write_fixtures; write_fixtures()"` from `backend/`; a test checks the committed fixtures match.
 - After a schema change, delete the local `backend/vestly.db` (git-ignored) before starting the server.

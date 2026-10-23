@@ -17,6 +17,7 @@ from app.controls.gate import log_refusal
 from app.controls.models import FundingRequest
 from app.controls.posting import request_funding
 from app.equity.service import draft_equity
+from app.errors import doing
 from app.ledger.errors import LedgerError
 from app.payroll.service import draft_payroll
 from app.reconcile.engine import reconcile_period
@@ -27,12 +28,17 @@ FUNDING_KINDS = {"uncleared_funding"}
 
 
 def run_close(session: Session, period: str) -> dict:
-    run, _ = reconcile_period(session, period, PAYROLL)
-    payroll = draft_payroll(session, period, PAYROLL)
-    equity = draft_equity(session, period, EQUITY)
-    cases = sync_cases(session, run.id, period)
-    link_drafts(session, period)
-    funding, refused = request_due_funding(session, period)
+    with doing("reconciling the sources", period=period):
+        run, _ = reconcile_period(session, period, PAYROLL)
+    with doing("drafting payroll", period=period):
+        payroll = draft_payroll(session, period, PAYROLL)
+    with doing("drafting the equity true-up", period=period):
+        equity = draft_equity(session, period, EQUITY)
+    with doing("opening and refreshing cases", period=period):
+        cases = sync_cases(session, run.id, period)
+        link_drafts(session, period)
+    with doing("asking for the funding still owed", period=period):
+        funding, refused = request_due_funding(session, period)
     return {
         "period": period,
         "reconciliation_run": run.id,

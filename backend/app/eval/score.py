@@ -19,7 +19,12 @@ from app.eval.scorer import TARGETS, load_key, run_as_dict, score  # noqa: E402
 
 
 def score_period(period: str, runs: int = 3, key: dict | None = None, model=None) -> tuple[dict, list]:
-    results = [run_close(period, model) for _ in range(runs)]
+    from app.errors import doing
+
+    results = []
+    for number in range(1, runs + 1):
+        with doing("running a scored close", period=period, run=number):
+            results.append(run_close(period, model))
     return score(key or load_key(), results), results
 
 

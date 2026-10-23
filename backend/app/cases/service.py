@@ -330,7 +330,10 @@ def _reinvestigate(session: Session, case: Case, who: str) -> None:
         move(session, case, "answered", who, f"{who} confirmed.")
     if case.state != "investigating":
         move(session, case, "investigating", case.seat, "Checking the sources again after the answer.")
-    run, _ = reconcile_period(session, case.period, Actor(case.seat, "agent"))
+    from app.errors import doing
+
+    with doing("re-checking the sources after an answer", case=case.key):
+        run, _ = reconcile_period(session, case.period, Actor(case.seat, "agent"))
     finding = session.scalar(
         select(Reconciliation).where(
             Reconciliation.run_id == run.id,

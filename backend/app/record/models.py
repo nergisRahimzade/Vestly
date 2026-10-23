@@ -34,6 +34,22 @@ class EvidenceEvent(Base):
     hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
 
 
+class ErrorLog(Base):
+    """An unexpected error: where it happened (file, line, function), why, and what was being done. Append-only."""
+
+    __tablename__ = "error_log"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    at: Mapped[str] = mapped_column(String(40), nullable=False)
+    where: Mapped[str] = mapped_column(String(300), nullable=False)
+    error_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    message: Mapped[str] = mapped_column(String(2000), nullable=False)
+    steps_json: Mapped[str] = mapped_column(String, nullable=False)
+    request: Mapped[str | None] = mapped_column(String(300))
+    actor: Mapped[str | None] = mapped_column(String(48))
+    traceback: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class Precedent(Base):
     """A person's ruling that later cases follow. Expired or overruled, never deleted or edited.
 

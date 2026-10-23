@@ -156,9 +156,12 @@ def load_context(session: Session, period: str, policy: Policy, rate_card: dict)
 
 
 def detect_all(ctx: Context) -> list[Finding]:
+    from app.errors import doing
+
     findings: list[Finding] = []
     for detector in DETECTORS:
-        findings.extend(detector(ctx))
+        with doing(f"running the {detector.__name__} detector", period=ctx.period):
+            findings.extend(detector(ctx))
     return findings
 
 

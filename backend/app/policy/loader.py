@@ -127,8 +127,11 @@ def load_policy(path: Path = POLICY_PATH) -> Policy:
 
 
 def _parse_policy(path: Path) -> Policy:
-    raw_text = path.read_text(encoding="utf-8")
-    document = yaml.safe_load(raw_text)
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+        document = yaml.safe_load(raw_text)
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError(f"The policy file {path.name} could not be read: {type(exc).__name__}: {exc}") from exc
     facts = tuple(
         FactPolicy(
             fact=name,

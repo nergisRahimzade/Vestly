@@ -102,13 +102,19 @@ class ClaudeReader:
         self.model = model or os.environ.get("VESTLY_MODEL", "claude-opus-5-5")
 
     def _parse(self, system: str, content: list[dict], output_format):
-        response = self.client.messages.parse(
-            model=self.model,
-            max_tokens=16000,
-            system=system,
-            output_config={"effort": "low"},
-            messages=[{"role": "user", "content": content}],
-            output_format=output_format,
+        from app.agent.model import call_claude
+
+        response = call_claude(
+            f"reading text into {output_format.__name__}",
+            self.model,
+            lambda: self.client.messages.parse(
+                model=self.model,
+                max_tokens=16000,
+                system=system,
+                output_config={"effort": "low"},
+                messages=[{"role": "user", "content": content}],
+                output_format=output_format,
+            ),
         )
         if response.stop_reason == "refusal":
             raise ExtractionRefused("The model declined to read this text.")

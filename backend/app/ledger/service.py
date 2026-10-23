@@ -179,7 +179,7 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
         return LedgerError("journal_is_final", "This journal can no longer change.", 409)
     if "booking_key" in message:
         return LedgerError("already_booked", "A live entry already books this item.", 409, rule="DUP-1")
-    return LedgerError("ledger_rejected", "The database rejected the journal entry.", 422)
+    return LedgerError("ledger_rejected", f"The database rejected the journal entry for {entity_code} {period}: {str(exc.orig)[:200]}", 422)
 
 
 def _flush(session: Session, entity_code: str, period: str) -> None:

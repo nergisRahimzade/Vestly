@@ -18,6 +18,38 @@ MAX_TOKENS = 16000
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
+class ModelCallError(Exception):
+    """A call to the Claude API failed. The message says which kind of failure, in plain words."""
+
+
+def call_claude(what: str, model: str, send):
+    """Make one Claude API call and translate every SDK error into a ModelCallError that says why.
+
+    Most specific first, so a bad key, a missing model, a rate limit and a network failure each
+    read differently. The SDK's own retries (429, 5xx, connection errors) have already run.
+    """
+    import anthropic
+
+    try:
+        return send()
+    except anthropic.AuthenticationError as exc:
+        raise ModelCallError(f"{what}: the Claude API refused the credentials (401). Check ANTHROPIC_API_KEY.") from exc
+    except anthropic.PermissionDeniedError as exc:
+        raise ModelCallError(f"{what}: the API key may not use {model} (403): {exc.message}") from exc
+    except anthropic.NotFoundError as exc:
+        raise ModelCallError(f"{what}: model {model} was not found (404).") from exc
+    except anthropic.RateLimitError as exc:
+        raise ModelCallError(f"{what}: rate limited by the Claude API (429), still after the SDK's retries.") from exc
+    except anthropic.BadRequestError as exc:
+        raise ModelCallError(f"{what}: the Claude API rejected the request (400): {exc.message}") from exc
+    except anthropic.APIStatusError as exc:
+        raise ModelCallError(f"{what}: the Claude API answered {exc.status_code}: {exc.message}") from exc
+    except anthropic.APITimeoutError as exc:
+        raise ModelCallError(f"{what}: the Claude API did not answer in time.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise ModelCallError(f"{what}: could not reach the Claude API: {exc}") from exc
+
+
 @dataclass
 class Turn:
     stop_reason: str
@@ -41,16 +73,20 @@ class ClaudeModel:
         self.effort = effort
 
     def turn(self, system: str, tools: list[dict], messages: list[dict]) -> Turn:
-        response = self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            tools=tools,
-            tool_choice={"type": "auto"},
-            messages=messages,
-            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": report_schema()}},
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
+        response = call_claude(
+            "agent turn",
+            self.model,
+            lambda: self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=MAX_TOKENS,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+                tools=tools,
+                tool_choice={"type": "auto"},
+                messages=messages,
+                output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": report_schema()}},
+                betas=[FALLBACK_BETA],
+                fallbacks="default",
+            ),
         )
         content = []
         for block in response.content:
