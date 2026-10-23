@@ -36,6 +36,12 @@ Also:
 - In the summary, explain each new or changed file in the simplest terms first, then in software terms.
 - Vestly follows the same rule, enforced in code (section 4, rule 9).
 
+### Tests are the spec; errors must say where and why (user, 2026-10-23)
+
+- Tests describe how the system should work. When one fails, read the reason and fix the code. Never edit a test to make it pass. If a requirement has really changed, say so and agree it with the user before changing the expectation.
+- Error handling throughout: catch at the boundaries (external APIs, file and database loads, tool runs, the API handler), add what was being done and with which ids, then re-raise or turn the error into an honest result. Never swallow an error.
+- Once the Anthropic API key is set, test the agent live as well as scripted, keep live runs small (they cost money), and report their results, including when they were skipped for lack of a key.
+
 ## 2. The Hyphenate track (what we build for)
 
 This is a practice build for the CalHacks 2026 Hyphenate track, "The Hyphenated Enterprise: Autonomous Systems for Finance". Hyphenate has **no API** to integrate. There is no event schedule.
