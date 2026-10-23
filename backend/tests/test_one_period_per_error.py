@@ -35,7 +35,7 @@ def test_priyas_march_overpayment_is_drafted_once(client):
     assert june.status_code == 200, june.text
     drafted = _overpayments(june.json())
     assert len(drafted) == 1
-    assert drafted[0]["total_debit"] == "1500.00"
+    assert drafted[0]["total_debit"] == "1451.61"
     assert any(note["kind"] == "overpayment" for note in june.json()["notes"])
 
     july = client.post("/payroll/drafts?period=2026-07", headers=AGENT)

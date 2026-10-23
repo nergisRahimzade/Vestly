@@ -15,7 +15,9 @@
     "email:Maya Chen bank change email",
     "diverted_funding:NL-US-001",
     "uncleared_funding:PAY-2026-06-NL-US-002,PAY-2026-06-NL-US-005",
-    "late_bank_posting:PAY-2026-06-NL-DE-002"
+    "late_bank_posting:PAY-2026-06-NL-DE-002",
+    "uncleared_funding:PAY-2026-06-NL-DE-001",
+    "funding_booked_in_full:DE"
   ],
   "rate_card": {
     "us_401k_match_rate": "0.04",
@@ -548,7 +550,7 @@
       "currency": "EUR",
       "destination_account": "3002003001",
       "kind": "net_pay",
-      "cleared": true
+      "cleared": false
     },
     {
       "payment_id": "PAY-2026-06-NL-DE-002",
@@ -896,15 +898,6 @@
     },
     {
       "entity_code": "DE",
-      "posted_on": "2026-06-30",
-      "amount": "6750.00",
-      "currency": "EUR",
-      "payment_id": "PAY-2026-06-NL-DE-001",
-      "description": "Net pay Lukas Weber PAY-2026-06-NL-DE-001",
-      "destination_account": "3002003001"
-    },
-    {
-      "entity_code": "DE",
       "posted_on": "2026-07-01",
       "amount": "6000.00",
       "currency": "EUR",
@@ -1061,6 +1054,25 @@
           "department": null,
           "debit": "0.00",
           "credit": "2500.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "DE",
+      "kind": "bank",
+      "memo": "DE net pay for June 2026, booked by treasury from the payment file",
+      "lines": [
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "24750.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "1000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "24750.00"
         }
       ]
     }

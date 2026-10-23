@@ -234,7 +234,9 @@ def test_reconcile_uses_the_subledger_not_a_department_shortcut(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
     june = client.post("/reconciliations?period=2026-06", headers=AGENT)
     assert june.status_code == 200, june.text
-    priya = next(row for row in june.json()["findings"] if row["subject_name"] == "Priya Shah")
+    priya = next(
+        row for row in june.json()["findings"] if row["subject_name"] == "Priya Shah" and row["fact"] == "employment_dates"
+    )
     ledger = priya["ranking"][3]["claim"]
     assert "5200" in ledger
     assert "GR-US-003" in ledger

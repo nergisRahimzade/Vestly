@@ -22,7 +22,8 @@ from app.ledger.service import (
 from app.payroll.calc import accrue_wages, accrual_days, month_length, overpaid_gross, policy_contribution, quantize
 from app.periods import month_of, previous_period
 from app.policy.loader import load_policy
-from app.world.loader import world_loaded
+from app.reconcile.detectors import payroll_holds
+from app.world.loader import rate_card_for, world_loaded
 from app.world.models import FundingInstruction, HrCensusRow, PayrollRegisterRow, SourceDocument
 
 PAYROLL_PREFIX = "[Payroll]"
@@ -47,13 +48,29 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
     payroll_rows = list(session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period == period)))
     funding_rows = list(session.scalars(select(FundingInstruction).where(FundingInstruction.period == period)))
     known = {row.employee_number for row in hr_rows}
+    # Where HR or an approved comp action disagrees with the register, the draft leaves the
+    # disputed pay out until a person answers: a retro lump into a locked month, or a whole
+    # line paid by the wrong entity after a transfer.
+    holds = payroll_holds(session, period, policy, rate_card_for(session, period) or {})
+    held: list[dict] = []
 
     for entity in ENTITIES:
         entity_pay = [row for row in payroll_rows if row.entity_code == entity]
-        confirmed = [row for row in entity_pay if row.employee_number in known]
+        confirmed = []
+        for row in entity_pay:
+            hold = holds.get(row.employee_number)
+            if row.employee_number in known and hold is not None and hold["gross"] is None:
+                held.append(_held(row, row.gross_wages, hold))
+                continue
+            if row.employee_number in known:
+                confirmed.append(row)
         ghosts = [row for row in entity_pay if row.employee_number not in known]
         for row in confirmed:
-            person = _person_from_register(row, policy)
+            hold = holds.get(row.employee_number)
+            held_gross = hold["gross"] if hold is not None else ZERO
+            if held_gross:
+                held.append(_held(row, held_gross, hold))
+            person = _person_from_register(row, policy, held_gross)
             people.append(person)
             if person["contribution_difference"] != "0.00":
                 notes.append(
@@ -102,7 +119,20 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
         "people": people,
         "notes": notes,
         "journals": journals,
+        "held": held,
         "already_on_file": on_file,
+    }
+
+
+def _held(row: PayrollRegisterRow, gross: Decimal, hold: dict) -> dict:
+    return {
+        "employee_number": row.employee_number,
+        "legal_name": row.legal_name,
+        "entity_code": row.entity_code,
+        "gross_held": money_str(gross),
+        "currency": row.currency,
+        "kind": hold["kind"],
+        "reason": hold["reason"],
     }
 
 
@@ -134,22 +164,27 @@ def _withdraw_prior_drafts(session: Session, period: str, actor: Actor) -> None:
     session.commit()
 
 
-def _person_from_register(row: PayrollRegisterRow, policy) -> dict:
+def _person_from_register(row: PayrollRegisterRow, policy, held_gross: Decimal = ZERO) -> dict:
+    """One person's drafted pay. A held part of gross leaves the draft with its withholding and employer tax."""
     rate = policy.contribution_rate(row.entity_code)
-    policy_amount = policy_contribution(row.gross_wages, rate)
-    difference = quantize(policy_amount - row.employer_contribution)
+    register_policy_amount = policy_contribution(row.gross_wages, rate)
+    difference = quantize(register_policy_amount - row.employer_contribution)
+    gross = row.gross_wages - held_gross
+    withholding = row.employee_withholdings - quantize(held_gross * policy.withholding_rate(row.entity_code))
+    employer_tax = row.employer_tax - quantize(held_gross * policy.employer_tax_rate(row.entity_code))
     return {
         "employee_number": row.employee_number,
         "legal_name": row.legal_name,
         "entity_code": row.entity_code,
         "department": row.department,
-        "gross_wages": money_str(row.gross_wages),
-        "employee_withholdings": money_str(row.employee_withholdings),
-        "net_pay": money_str(row.net_pay),
-        "employer_tax": money_str(row.employer_tax),
+        "gross_wages": money_str(gross),
+        "employee_withholdings": money_str(withholding),
+        "net_pay": money_str(gross - withholding),
+        "employer_tax": money_str(employer_tax),
         "register_contribution": money_str(row.employer_contribution),
-        "employer_contribution": money_str(policy_amount),
+        "employer_contribution": money_str(policy_contribution(gross, rate)),
         "contribution_difference": money_str(difference),
+        "held_gross": money_str(held_gross),
     }
 
 

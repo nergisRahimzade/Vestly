@@ -30,7 +30,7 @@ def test_answer_key_schema_and_roster():
     key = _key()
     assert key["version"] == "2026-06"
     ids = [row["id"] for row in key["anomalies"]]
-    assert ids == [f"A{index:02d}" for index in range(1, 12)]
+    assert ids == [f"A{index:02d}" for index in range(1, 14)]
     roster = _roster()
     names = {person["legal_name"] for person in PEOPLE}
     names.add(SAM_ORTIZ["legal_name"])

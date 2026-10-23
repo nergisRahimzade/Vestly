@@ -42,6 +42,8 @@ class Policy:
     clock_start: str
     roles: tuple[tuple[str, tuple[str, ...]], ...]
     rules: tuple[tuple[str, str], ...]
+    routing: tuple[tuple[str, tuple[str, ...]], ...]
+    pay_calendar: tuple[tuple[str, str], ...]
     facts: tuple[FactPolicy, ...]
     content_hash: str
 
@@ -68,6 +70,18 @@ class Policy:
             if name == rule_id:
                 return text
         raise KeyError(rule_id)
+
+    def owners(self, kind: str) -> tuple[str, ...]:
+        for name, handles in self.routing:
+            if name == kind:
+                return handles
+        raise KeyError(kind)
+
+    def pay_cycle(self, entity_code: str) -> str:
+        for code, cycle in self.pay_calendar:
+            if code == entity_code:
+                return cycle
+        return "calendar_month"
 
     def escalates_to(self, role: str) -> str | None:
         for source, target in self.escalation:
@@ -140,6 +154,8 @@ def _parse_policy(path: Path) -> Policy:
         clock_start=str(controls["clock_start"]),
         roles=tuple((name, tuple(actions or ())) for name, actions in document["roles"].items()),
         rules=tuple((name, str(text)) for name, text in document["rules"].items()),
+        routing=tuple((kind, tuple(handles)) for kind, handles in document["routing"].items()),
+        pay_calendar=tuple((code, str(cycle)) for code, cycle in document["pay_calendar"].items()),
         facts=facts,
         content_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
     )

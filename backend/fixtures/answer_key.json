@@ -14,7 +14,8 @@
       "id": "M01",
       "name": "ocr_typos_in_bank_change_emails",
       "period": "2026-06",
-      "note": "Typos in Maya's and Jonah's emails are noise. Email is not a source for a bank change."
+      "note": "Typos in Maya's and Jonah's emails are noise. Email is not a source for a bank change.",
+      "kind": null
     },
     {
       "id": "M02",
@@ -23,7 +24,8 @@
       "subjects": [
         "NL-DE-003"
       ],
-      "note": "Greta Hoffmann appears twice in the June HR file with the same facts. Explain, do not flag."
+      "note": "Greta Hoffmann appears twice in the June HR file with the same facts. Explain, do not flag.",
+      "kind": "duplicate_hr_row"
     },
     {
       "id": "M03",
@@ -32,13 +34,15 @@
       "subjects": [
         "PAY-2026-06-NL-DE-002"
       ],
-      "note": "Sofia Keller's net pay posted on 1 July. Timing lag, not an unpaid wage."
+      "note": "Sofia Keller's net pay posted on 1 July. Timing lag, not an unpaid wage.",
+      "kind": "bank_timing"
     },
     {
       "id": "M04",
       "name": "gbp_usd_inside_band",
       "period": "2026-06",
-      "note": "Management pack 1.2700 versus reference 1.2750 is inside the 1% band."
+      "note": "Management pack 1.2700 versus reference 1.2750 is inside the 1% band.",
+      "kind": "fx_translation"
     }
   ],
   "anomalies": [
@@ -53,7 +57,8 @@
       "ask": "lee.park",
       "draft_allowed": false,
       "expected_amount": null,
-      "note": "No funding to account 9911882277. Cite the March Jonah ruling."
+      "note": "No funding to account 9911882277. Cite the March Jonah ruling.",
+      "kind": "bank_detail_change"
     },
     {
       "id": "A02",
@@ -65,9 +70,10 @@
       "trusted_source": "hr",
       "ask": "lee.park",
       "draft_allowed": true,
-      "expected_amount": "1500.00",
+      "expected_amount": "1451.61",
       "expected_currency": "USD",
-      "note": "Overpayment for 13-15 March, drafted once in June (the first open month) to account 1200 after HR confirms. Never again in a later month. Do not reopen March."
+      "note": "Paid 1-15 March (7,258.06 at 15,000.00 a month); the 3 days after the 12 March exit are an overpayment of 1,451.61, drafted once in June (the first open month) to account 1200 after HR confirms. Never again in a later month. Do not reopen March.",
+      "kind": "late_termination"
     },
     {
       "id": "A03",
@@ -93,7 +99,8 @@
           "amount": "5500.00",
           "currency": "GBP"
         }
-      ]
+      ],
+      "kind": "forfeiture_still_expensed"
     },
     {
       "id": "A04",
@@ -104,10 +111,11 @@
       ],
       "trusted_source": "approved_compensation",
       "ask": "dana.ruiz",
-      "draft_allowed": true,
+      "draft_allowed": false,
       "expected_amount": "4000.00",
       "expected_currency": "USD",
-      "note": "Catch-up in June only after the controller approves. sam.kerr entered the raise and cannot approve the run."
+      "note": "Hold the 4,000.00 retro lump until the controller approves a June catch-up; April and May stay locked. sam.kerr keyed the raise and cannot approve the run (SOD-2).",
+      "kind": "closed_period_effect"
     },
     {
       "id": "A05",
@@ -121,7 +129,8 @@
       "draft_allowed": false,
       "expected_amount": "6400.00",
       "expected_currency": "USD",
-      "note": "No wage expense. Cash that already left goes to suspense 1210."
+      "note": "No wage expense. Cash that already left goes to suspense 1210.",
+      "kind": "unconfirmed_person"
     },
     {
       "id": "A06",
@@ -135,7 +144,8 @@
       "draft_allowed": false,
       "expected_amount": "6000.00",
       "expected_currency": "EUR",
-      "note": "Recognize no expense until board approval arrives. Reverse the 6,000.00 EUR the platform fed January to June."
+      "note": "Recognize no expense until board approval arrives. Reverse the 6,000.00 EUR the platform fed January to June.",
+      "kind": "missing_grant_approval"
     },
     {
       "id": "A07",
@@ -149,7 +159,8 @@
       "draft_allowed": true,
       "expected_amount": "160.00",
       "expected_currency": "GBP",
-      "note": "Draft UK pension at 5%. The register used 3%. Show the 160.00 difference."
+      "note": "Draft UK pension at 5%. The register used 3%. Show the 160.00 difference.",
+      "kind": "contribution_rate_break"
     },
     {
       "id": "A08",
@@ -163,7 +174,8 @@
       "ask": "alex.moreau",
       "draft_allowed": true,
       "expected_amount": null,
-      "note": "Request Jonah Hale and Riley Nguyen only. Do not re-send Maya's diverted line or anyone already cleared."
+      "note": "Request Jonah Hale and Riley Nguyen only. Do not re-send Maya's diverted line or anyone already cleared.",
+      "kind": "uncleared_funding"
     },
     {
       "id": "A09",
@@ -176,7 +188,8 @@
       "ask": "morgan.li",
       "draft_allowed": true,
       "expected_amount": null,
-      "note": "Expense from the signed vest end 2028-03-01, not the platform date 2027-03-01."
+      "note": "Expense from the signed vest end 2028-03-01, not the platform date 2027-03-01.",
+      "kind": "vest_schedule_mismatch"
     },
     {
       "id": "A10",
@@ -190,7 +203,8 @@
       "draft_allowed": true,
       "expected_amount": "500.00",
       "expected_currency": "USD",
-      "note": "Expense grant GR-US-006 once. GR-US-006-DUP is the extra platform row; reverse its 500.00 USD."
+      "note": "Expense grant GR-US-006 once. GR-US-006-DUP is the extra platform row; reverse its 500.00 USD.",
+      "kind": "duplicate_grant"
     },
     {
       "id": "A11",
@@ -203,7 +217,39 @@
       "ask": "head.engineering",
       "draft_allowed": true,
       "expected_amount": null,
-      "note": "Wages and stock expense follow HR to UK Engineering as of 1 June. June stock expense is 500.00 EUR translated to 425.49 GBP at the reference rates; DE reverses its 500.00 EUR. Ask the Engineering head and the controller."
+      "note": "Wages and stock expense follow HR to UK Engineering as of 1 June. June stock expense is 500.00 EUR translated to 425.49 GBP at the reference rates; DE reverses its 500.00 EUR. Ask the Engineering head and the controller.",
+      "kind": "transfer_not_reflected",
+      "also_ask": [
+        "dana.ruiz"
+      ]
+    },
+    {
+      "id": "A12",
+      "name": "partial_funding_booked_in_full",
+      "kind": "funding_booked_not_cleared",
+      "period": "2026-06",
+      "subjects": [
+        "PAY-2026-06-NL-DE-001"
+      ],
+      "trusted_source": "bank",
+      "ask": "alex.moreau",
+      "draft_allowed": true,
+      "expected_amount": "6750.00",
+      "expected_currency": "EUR",
+      "note": "Treasury booked the whole DE June payment file as paid; the bank never cleared Lukas Weber's 6,750.00. Trust the bank for cash moved and keep a reconciling item open."
+    },
+    {
+      "id": "A13",
+      "name": "self_approval_of_large_accrual",
+      "kind": "control",
+      "period": "2026-06",
+      "subjects": [],
+      "trusted_source": "policy",
+      "ask": "dana.ruiz",
+      "draft_allowed": true,
+      "expected_amount": "62000.00",
+      "expected_currency": "USD",
+      "note": "A 62,000.00 US accrual: the requester's own approval is refused (SOD-1) and it needs two approvers, one the controller (LIM-1). A control scenario, run by the scorer, not planted in the data."
     }
   ]
 }

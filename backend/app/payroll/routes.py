@@ -26,6 +26,7 @@ def create_payroll_drafts(
         "policy_hash": result["policy_hash"],
         "people": result["people"],
         "notes": result["notes"],
+        "held": result["held"],
         "already_on_file": result["already_on_file"],
         "journals": [
             {

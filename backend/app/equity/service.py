@@ -290,6 +290,21 @@ def draft_equity(session: Session, period: str, actor: Actor) -> dict:
     }
 
 
+def trueup_breakdown(session: Session, period: str) -> list[dict]:
+    """Per grant, what the subledger earned against what the platform fed, since the last live true-up.
+
+    A read for the detectors: it computes in memory and stores nothing.
+    """
+    rows, _notes = compute_schedules(session, period)
+    window_start = first_loaded_period(session) or period
+    explain_from = max(_month_after_last_trueup(session, period) or window_start, window_start)
+    unexplained = [
+        row for row in rows if explain_from <= row.period <= period and row.booked_net_expense is not None
+    ]
+    signed = {grant.grant_number for grant in signed_grants(session)}
+    return _grant_breakdown(session, unexplained, explain_from, period, signed)
+
+
 def _month_after_last_trueup(session: Session, period: str) -> str | None:
     """The month after the latest earlier month with a live true-up, if any."""
     rows = session.scalars(

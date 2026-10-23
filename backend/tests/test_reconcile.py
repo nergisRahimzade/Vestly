@@ -9,8 +9,8 @@ from helpers import AGENT, CONTROLLER, STRANGER
 
 
 
-def _named(rows: list[dict], name: str) -> dict:
-    return next(row for row in rows if row["subject_name"] == name)
+def _named(rows: list[dict], name: str, fact: str | None = None) -> dict:
+    return next(row for row in rows if row["subject_name"] == name and (fact is None or row["fact"] == fact))
 
 
 def test_policy_is_readable_and_not_editable(client):
@@ -53,8 +53,10 @@ def test_priya_conflict_and_in_band_fx(client):
     june = client.post("/reconciliations?period=2026-06", headers=AGENT)
     assert june.status_code == 200, june.text
     rows = june.json()["findings"]
-    priya = _named(rows, "Priya Shah")
-    assert priya["fact"] == "employment_dates"
+    priya = _named(rows, "Priya Shah", "employment_dates")
+    assert priya["kind"] == "late_termination"
+    assert priya["ask"] == ["lee.park"]
+    assert priya["amount"] == "1451.61"
     assert priya["disposition"] == "conflict"
     assert priya["authority"] == "hr"
     assert priya["trusted_value"] == "2026-03-12"
@@ -65,7 +67,7 @@ def test_priya_conflict_and_in_band_fx(client):
     assert "2026-04-02" in priya["explanation"]
     assert priya["policy_version"] == "northlight-2026-06"
 
-    hannah = _named(rows, "Hannah Price")
+    hannah = _named(rows, "Hannah Price", "employment_dates")
     assert hannah["disposition"] == "conflict"
     assert hannah["trusted_value"] == "2026-01-15"
     assert "No payroll register row" in hannah["ranking"][1]["claim"]
@@ -76,10 +78,14 @@ def test_priya_conflict_and_in_band_fx(client):
     assert fx["trusted_value"] == "1.2750"
     assert "1.2700" in fx["explanation"]
     assert "inside the policy band" in fx["explanation"]
-    assert "Riley Nguyen" not in {row["subject_name"] for row in rows}
+    # Riley the person is clean. His June payment line is part of the half-cleared batch (A08), a different subject.
+    assert "NL-US-005" not in {row["subject_number"] for row in rows}
+    assert next(row for row in rows if row["subject_number"] == "PAY-2026-06-NL-US-005")["kind"] == "uncleared_funding"
 
     again = client.post("/reconciliations?period=2026-06", headers=CONTROLLER)
-    priya_rows = [row for row in again.json()["findings"] if row["subject_name"] == "Priya Shah"]
+    priya_rows = [
+        row for row in again.json()["findings"] if row["subject_name"] == "Priya Shah" and row["fact"] == "employment_dates"
+    ]
     assert len(priya_rows) == 1
 
     hidden = client.get("/reconciliations?period=2026-06", headers=STRANGER)

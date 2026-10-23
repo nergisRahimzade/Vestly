@@ -247,11 +247,11 @@
       "department": "Product",
       "pay_period_start": "2026-03-01",
       "pay_period_end": "2026-03-15",
-      "gross_wages": "7500.00",
-      "employee_withholdings": "1500.00",
-      "net_pay": "6000.00",
-      "employer_tax": "600.00",
-      "employer_contribution": "300.00",
+      "gross_wages": "7258.06",
+      "employee_withholdings": "1451.61",
+      "net_pay": "5806.45",
+      "employer_tax": "580.64",
+      "employer_contribution": "290.32",
       "currency": "USD",
       "destination_account": "1002003003",
       "retro_effective_date": null,
@@ -439,7 +439,7 @@
       "employee_number": "NL-US-003",
       "legal_name": "Priya Shah",
       "entity_code": "US",
-      "amount": "6000.00",
+      "amount": "5806.45",
       "currency": "USD",
       "destination_account": "1002003003",
       "kind": "net_pay",
@@ -790,7 +790,7 @@
     {
       "entity_code": "US",
       "posted_on": "2026-03-31",
-      "amount": "6000.00",
+      "amount": "5806.45",
       "currency": "USD",
       "payment_id": "PAY-2026-03-NL-US-003",
       "description": "Net pay Priya Shah PAY-2026-03-NL-US-003",
@@ -916,7 +916,7 @@
         {
           "account_code": "5000",
           "department": "Product",
-          "debit": "18500.00",
+          "debit": "18258.06",
           "credit": "0.00"
         },
         {
@@ -934,7 +934,7 @@
         {
           "account_code": "5100",
           "department": "Product",
-          "debit": "1480.00",
+          "debit": "1460.64",
           "credit": "0.00"
         },
         {
@@ -952,32 +952,32 @@
         {
           "account_code": "5110",
           "department": "Product",
-          "debit": "740.00",
+          "debit": "730.32",
           "credit": "0.00"
         },
         {
           "account_code": "2100",
           "department": null,
           "debit": "0.00",
-          "credit": "52400.00"
+          "credit": "52206.45"
         },
         {
           "account_code": "2200",
           "department": null,
           "debit": "0.00",
-          "credit": "13100.00"
+          "credit": "13051.61"
         },
         {
           "account_code": "2210",
           "department": null,
           "debit": "0.00",
-          "credit": "5240.00"
+          "credit": "5220.64"
         },
         {
           "account_code": "2220",
           "department": null,
           "debit": "0.00",
-          "credit": "2620.00"
+          "credit": "2610.32"
         }
       ]
     },
@@ -989,14 +989,14 @@
         {
           "account_code": "2100",
           "department": null,
-          "debit": "52400.00",
+          "debit": "52206.45",
           "credit": "0.00"
         },
         {
           "account_code": "1000",
           "department": null,
           "debit": "0.00",
-          "credit": "52400.00"
+          "credit": "52206.45"
         }
       ]
     },

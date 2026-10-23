@@ -467,12 +467,14 @@ class Drop:
     documents: list[dict]
     funding: list[dict] = field(default_factory=list)
     bank: list[dict] = field(default_factory=list)
+    ledger_entries: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class Plant:
     """One source system getting something wrong. stage is when it applies:
-    'sources' edits HR, payroll, equity, or documents; 'funding' edits funding instructions."""
+    'sources' edits HR, payroll, equity, or documents; 'funding' edits funding instructions;
+    'bank' edits bank lines; 'ledger' edits what the old process booked."""
 
     name: str
     stage: str
@@ -486,13 +488,19 @@ def _one(rows: list[dict], key: str, value: str) -> dict:
     return matches[0]
 
 
-def paid_past_termination(employee_number: str, paid_through: str, gross: str) -> Plant:
-    """Payroll keeps paying after the real last day because HR had not recorded the exit yet."""
+def paid_past_termination(employee_number: str, paid_through: str) -> Plant:
+    """Payroll keeps paying after the real last day because HR had not recorded the exit yet.
+
+    The register pays the days from the cycle start through paid_through, at the person's rate.
+    """
 
     def apply(drop: Drop) -> None:
         row = _one(drop.payroll, "employee_number", employee_number)
         row["pay_period_end"] = paid_through
-        set_gross(row, Decimal(gross))
+        rate = monthly_rate(person_by_number(employee_number), drop.month)
+        worked = inclusive_days(row["pay_period_start"], paid_through)
+        full = inclusive_days(*pay_window(person_by_number(employee_number), drop.month)[2:])
+        set_gross(row, (rate * worked / full).quantize(CENT))
 
     return Plant(f"paid_past_termination:{employee_number}", "sources", apply)
 
@@ -621,6 +629,26 @@ def duplicate_hr_row(employee_number: str) -> Plant:
     return Plant(f"duplicate_hr_row:{employee_number}", "sources", apply)
 
 
+def funding_booked_in_full(entity: str) -> Plant:
+    """Treasury books the whole payment file as paid, though the bank has not cleared every line."""
+
+    def apply(drop: Drop) -> None:
+        lines = [row for row in drop.funding if row["entity_code"] == entity]
+        total = sum((Decimal(row["amount"]) for row in lines), Decimal("0.00"))
+        drop.ledger_entries.append(
+            balanced(
+                {
+                    "entity_code": entity,
+                    "kind": "bank",
+                    "memo": f"{entity} net pay for {drop.month.label}, booked by treasury from the payment file",
+                    "lines": [debit("2100", total, None), credit("1000", total)],
+                }
+            )
+        )
+
+    return Plant(f"funding_booked_in_full:{entity}", "ledger", apply)
+
+
 def late_bank_posting(payment_id: str, posted_on: str) -> Plant:
     """A bank line that posted one day after month-end. Mess, not an unpaid wage."""
 
@@ -707,7 +735,7 @@ DEFAULT_PLANTS: dict[str, list[Plant]] = {
     "2026-04": carry_over("GR-US-003", "GR-UK-003"),
     "2026-05": carry_over("GR-US-003", "GR-UK-003"),
     "2026-03": [
-        paid_past_termination("NL-US-003", paid_through="2026-03-15", gross="7500.00"),
+        paid_past_termination("NL-US-003", paid_through="2026-03-15"),
         stale_vesting_flag("GR-UK-003"),
         unapproved_grant("GR-DE-001"),
         contribution_rate_break("NL-UK-001", "0.03"),
@@ -728,6 +756,8 @@ DEFAULT_PLANTS: dict[str, list[Plant]] = {
         diverted_funding("NL-US-001", "9911882277"),
         uncleared_funding("PAY-2026-06-NL-US-002", "PAY-2026-06-NL-US-005"),
         late_bank_posting("PAY-2026-06-NL-DE-002", "2026-07-01"),
+        uncleared_funding("PAY-2026-06-NL-DE-001"),
+        funding_booked_in_full("DE"),
     ],
 }
 
@@ -891,7 +921,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         plants = DEFAULT_PLANTS.get(period, [])
     if closed is None:
         closed = MONTHS.get(period, {}).get("closed", False)
-    unknown = [plant.stage for plant in plants if plant.stage not in ("sources", "funding", "bank")]
+    unknown = [plant.stage for plant in plants if plant.stage not in ("sources", "funding", "bank", "ledger")]
     if unknown:
         raise ValueError(f"Unknown plant stage {unknown[0]!r}")
 
@@ -935,6 +965,10 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
             entries.append(bank_entry(entity, month, [row for row in cleared if row["entity_code"] == entity]))
         entries.append(equity_entry(entity, month, [row for row in drop.equity if row["entity_code"] == entity]))
         ledger_entries.extend(entry for entry in entries if entry is not None)
+    drop.ledger_entries = ledger_entries
+    for plant in plants:
+        if plant.stage == "ledger":
+            plant.apply(drop)
 
     return {
         "period": period,

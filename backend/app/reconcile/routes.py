@@ -11,7 +11,7 @@ from app.db import get_db
 from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.policy.loader import load_policy
-from app.reconcile.engine import latest_run, reconcile_period
+from app.reconcile.engine import finding_dict, latest_run, reconcile_period
 from app.reconcile.models import Reconciliation, ReconciliationRun
 
 router = APIRouter()
@@ -25,22 +25,6 @@ def runner(who: Actor = Depends(current_actor)) -> Actor:
 def reader(who: Actor = Depends(current_actor)) -> Actor:
     require(who, RECONCILE_READ, "read reconciliations")
     return who
-
-
-def _finding(row: Reconciliation) -> dict:
-    return {
-        "period": row.period,
-        "fact": row.fact,
-        "subject_number": row.subject_number,
-        "subject_name": row.subject_name,
-        "disposition": row.disposition,
-        "authority": row.authority,
-        "trusted_value": row.trusted_value,
-        "explanation": row.explanation,
-        "ranking": json.loads(row.ranking_json),
-        "policy_version": row.policy_version,
-        "policy_hash": row.policy_hash,
-    }
 
 
 @router.get("/policy")
@@ -89,7 +73,7 @@ def _run_with_findings(db: Session, run: ReconciliationRun) -> dict:
     rows = db.scalars(
         select(Reconciliation).where(Reconciliation.run_id == run.id).order_by(Reconciliation.subject_name)
     )
-    return {"run": _run(run), "findings": [_finding(row) for row in rows]}
+    return {"run": _run(run), "findings": [finding_dict(row) for row in rows]}
 
 
 @router.post("/reconciliations")

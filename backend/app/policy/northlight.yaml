@@ -63,6 +63,28 @@ rules:
   DUP-1: No entry for an item a live entry already books.
   CLS-1: Nothing posts into a locked period. Reopening is a controller action with a reason.
   PRV-1: Vestly reads one person's pay only inside an open case on that person.
+# Who owns each kind of question. department_head means the head of the person's department.
+routing:
+  bank_detail_change: [lee.park]
+  late_termination: [lee.park]
+  employment_dates_conflict: [dana.ruiz]
+  forfeiture_still_expensed: [dana.ruiz]
+  closed_period_effect: [dana.ruiz]
+  pay_above_authorized: [dana.ruiz]
+  unconfirmed_person: [lee.park]
+  missing_grant_approval: [morgan.li]
+  contribution_rate_break: [payroll.provider]
+  uncleared_funding: [alex.moreau]
+  funding_booked_not_cleared: [alex.moreau]
+  vest_schedule_mismatch: [morgan.li]
+  duplicate_grant: [morgan.li]
+  unknown_platform_grant: [morgan.li]
+  transfer_not_reflected: [department_head, dana.ruiz]
+# Pay cycles. The UK pays the 26th of the previous month to the 25th; the others pay calendar months.
+pay_calendar:
+  US: calendar_month
+  UK: "26-25"
+  DE: calendar_month
 controls:
   # LIM-1: an entry or funding release above this needs two approvers. Not the same
   # number as materiality, which decides who looks at a difference.
@@ -112,6 +134,13 @@ facts:
         reason: On a completed run, the register is the authority for amounts withheld and employer taxes.
       - source: ledger
         reason: The ledger shows what was booked.
+  contribution_rate:
+    authority: policy_rate
+    ranking:
+      - source: policy_rate
+        reason: The plan's contribution rate is set in policy. A register cannot change plan terms.
+      - source: payroll
+        reason: The register shows what the provider computed, which may use the wrong rate.
   grant_terms:
     authority: signed_grant
     ranking:

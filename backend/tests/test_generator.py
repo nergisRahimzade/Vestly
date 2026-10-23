@@ -103,7 +103,7 @@ def test_the_shipped_months_name_their_plants():
 
 def test_an_unknown_plant_stage_is_refused():
     with pytest.raises(ValueError):
-        build_drop("2026-04", plants=[Plant("broken", "ledger", lambda drop: None)])
+        build_drop("2026-04", plants=[Plant("broken", "audit", lambda drop: None)])
 
 
 def test_ines_first_uk_cycle_is_partial():

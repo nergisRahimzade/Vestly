@@ -185,21 +185,23 @@ Months: January–May 2026 closed and locked (booked by Northlight's old process
 
 | Id | Case | Who | Status in code today |
 | --- | --- | --- | --- |
-| A01 | Bank-detail diversion by email; provider paid the emailed account | Maya Chen (US) | Precedent found; the gate refuses pay to the emailed account without a confirmed call-back (BNK-1). **Detection** in task 9. |
-| A02 | Late termination: left 12 Mar, HR recorded 2 Apr, paid to 15 Mar | Priya Shah (US) | Reconciler shows the four-way conflict with HR trusted; 1,500.00 overpayment drafted once in June to 1200; traced to HR and the March register. |
-| A03 | Forfeiture still expensed | Priya, Hannah Price (UK, pre-cliff) | Subledger forfeits; June true-up reverses 3,000.00 USD and 5,500.00 GBP; routed to the controller. |
-| A04 | Backdated raise into locked April, entered by `sam.kerr` | Evan Brooks (US) | SOD-2 refuses `sam.kerr` approving the US June run. **Lump not yet held** (task 9). |
-| A05 | Ghost employee | Sam Ortiz | No wage line; 6,400.00 cash to suspense 1210; HR asked. |
-| A06 | Grant with no board approval | Lukas Weber (DE) | No expense; June true-up reverses 6,000.00 EUR; legal asked. |
-| A07 | UK pension at 3% vs policy 5% | Amira Khan (UK) | Drafted at 5%; 160.00 GBP difference noted to the provider. |
-| A08 | Half-cleared US funding batch | Jonah, Riley lines | Data planted. **No funding requests yet** (task 11). |
-| A09 | Platform vest-end typo | Jonah Hale (US) | Subledger uses the signed date; mismatch noted to legal. |
-| A10 | Duplicate grant on the platform | Nadia Rossi (US) | Expensed once; duplicate's 500.00 reversed; noted. |
-| A11 | Transfer DE → UK on 1 June not reflected | Tomas Fischer | Stock expense follows HR to UK at 425.49 GBP, DE reverses 500.00 EUR. **Payroll still drafted in DE** (task 9). |
-| A12 | Partial funding booked in full (DE) | — | **Not planted yet.** |
+| A01 | Bank-detail diversion by email; provider paid the emailed account | Maya Chen (US) | ✅ Detected from the noisy email; held (BNK-1) citing P-2026-03-001 and the email quote; HR asked for a call-back. A confirmed call-back turns it into an explained change. |
+| A02 | Late termination: left 12 Mar, HR recorded 2 Apr, paid 1–15 Mar | Priya Shah (US) | ✅ Detected (HR vs payroll, equity, ledger, HR trusted); 1,451.61 overpayment (3 days of 7,258.06) drafted once in June to 1200; traced. |
+| A03 | Forfeiture still expensed | Priya, Hannah Price (UK, pre-cliff) | ✅ Detected; June true-up reverses 3,000.00 USD and 5,500.00 GBP; routed to the controller. |
+| A04 | Backdated raise into locked April, entered by `sam.kerr` | Evan Brooks (US) | ✅ Detected (closed-period effect); the 4,000.00 retro lump is held out of the June draft for the controller; SOD-2 refuses `sam.kerr` approving the run. |
+| A05 | Ghost employee | Sam Ortiz | ✅ Detected payroll → HR; no wage line; 6,400.00 cash to suspense 1210; HR asked. |
+| A06 | Grant with no board approval | Lukas Weber (DE) | ✅ Detected; no expense (GRT-1); June true-up reverses 6,000.00 EUR; legal asked. |
+| A07 | UK pension at 3% vs policy 5% | Amira Khan (UK) | ✅ Detected; drafted at 5%; 160.00 GBP difference to the provider; CTR-1 refuses a 3% entry. |
+| A08 | Half-cleared US funding batch | Jonah, Riley lines | ✅ Detected per payment line (Maya's diverted line excluded); treasury asked. **Funding requests and re-send** in task 11. |
+| A09 | Platform vest-end typo | Jonah Hale (US) | ✅ Detected; subledger uses the signed date; legal asked. |
+| A10 | Duplicate grant on the platform | Nadia Rossi (US) | ✅ Detected by normalized key (`GR-US-006-DUP` = `GR-US-006`); expensed once; 500.00 reversed. |
+| A11 | Transfer DE → UK on 1 June not reflected | Tomas Fischer | ✅ Detected; stock expense follows HR to UK (425.49 GBP, DE −500.00 EUR); his DE register line (8,500.00 EUR) is held until the provider re-runs it in the UK; Engineering head and controller asked. |
+| A12 | Partial funding booked in full (DE) | Lukas's June pay line | ✅ Planted and detected: treasury booked the whole DE file as paid, the bank never cleared 6,750.00; bank trusted; reconciling item open; treasury asked. |
 | A13 | Self-approval of a 62,000.00 accrual | US accrual | ✅ Requester refused (SOD-1); needs two approvers incl. the controller (LIM-1). |
 
 True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Greta Hoffmann, Ines Duarte (partial first UK pay), the in-band GBPUSD difference. Unlabeled mess (explain, don't flag): OCR typos in emails, Greta's duplicated HR row, Sofia's pay posted 1 July, FX inside the band.
+
+**Detectors** (`backend/app/reconcile/detectors.py`, run by `POST /reconciliations`): bank_detail_change, late_termination / employment_dates_conflict, unconfirmed_person, closed_period_effect, pay_above_authorized, contribution_rate_break, transfer_not_reflected, forfeiture_still_expensed, missing_grant_approval, duplicate_grant, unknown_platform_grant, vest_schedule_mismatch, uncleared_funding, funding_booked_not_cleared; explained mess: duplicate_hr_row, bank_timing, fx_translation. Each finding: ranked claims, trusted value, owners from the policy routing map, materiality, draft_allowed, basis (document hashes and quotes, rules, precedents). Payroll drafts hold what findings dispute (a retro lump into a locked month; a whole line paid by the wrong entity after a transfer). Cases are not opened yet (task 11).
 
 **Edge cases the tests cover today:** unbalanced entries refused (service, SQLite on approve/post, Postgres on insert); locked months refuse insert, approve and post, including a month locked after approval; preparer ≠ reviewer in the database; posted, rejected and withdrawn entries and their lines are final; a rejection needs a reason; entity books stay separate; unknown account, department or unopened period refused; booking keys (duplicate live key refused, a rejected correction can be re-drafted, July doesn't repeat June); re-draft after other drafts (no number reuse); reopen only by the controller, only for a locked month, with a reason, and relock blocks again; UK accrual and reversal only of a live accrual; partial first pay; cliff, cumulative ≥ vested, pre- and post-cliff forfeiture, 2024 grants producing 2026 lines, no expense without approval, transfer with currency translation, missing rate refuses to draft; the subledger knows only what HR had recorded by that month; an HR fact loaded later changes the subledger; drops load once, a different drop for the same month is refused, an incomplete drop is refused, the agent can't load; materiality (threshold, translation, no rate, always-escalate kinds, disagreeing sources); identity (forged role header ignored, unknown token, hashed tokens, agent sees totals only, groups under 3 hidden, document bodies need individual access, every individual read logged); evidence chain verifies, tampering is caught at the exact row, the record can't be changed or deleted; journal lines trace to register, HR, subledger and ledger rows; precedents match by rule, scope and date, are overruled by a new row, and only the controller rules; generator month dates (leap years), bad periods, unknown plant stages.
 
@@ -214,8 +216,9 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 7: evidence log, provenance, trace, precedents | `record/evidence-and-precedents` |
 | This file | `docs/claude-md` |
 | Task 8: policy gate, approvals inbox, clock, call-backs | `controls/policy-gate-and-approvals` |
+| Task 9: detectors for every case, explained mess, payroll holds, A12 planted | `domain/detectors` |
 
-**Next: task 9 `domain/detectors`** (pull from `controls/policy-gate-and-approvals`), then 10 scorer, 11 cases and posting, 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 10 `eval/scorer`** (pull from `domain/detectors`), then 11 cases and posting, 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 

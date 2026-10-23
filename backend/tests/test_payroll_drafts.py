@@ -69,6 +69,7 @@ def test_june_payroll_drafts(client):
         "department": "Engineering",
         "register_contribution": "400.00",
         "contribution_difference": "0.00",
+        "held_gross": "0.00",
     }
 
     amira = _named(body["people"], "Amira Khan")
@@ -83,7 +84,16 @@ def test_june_payroll_drafts(client):
     assert ines["gross_wages"] == "4800.00"
     assert ines["employer_contribution"] == "240.00"
 
+    held = {row["legal_name"]: row for row in body["held"]}
+    assert held["Evan Brooks"]["gross_held"] == "4000.00"
+    assert held["Evan Brooks"]["kind"] == "closed_period_effect"
+    assert _named(body["people"], "Evan Brooks")["gross_wages"] == "12000.00"
+    assert held["Tomas Fischer"]["gross_held"] == "8500.00"
+    assert held["Tomas Fischer"]["entity_code"] == "DE"
+    assert held["Tomas Fischer"]["kind"] == "transfer_not_reflected"
+    assert set(held) == {"Evan Brooks", "Tomas Fischer"}
     names = {row["legal_name"] for row in body["people"]}
+    assert "Tomas Fischer" not in names
     assert "Sam Ortiz" not in names
     assert "Priya Shah" not in names
     ghost = next(note for note in body["notes"] if note["kind"] == "unconfirmed_person")
@@ -93,15 +103,17 @@ def test_june_payroll_drafts(client):
     engineering = _line(us_wages, "5000", "Engineering")
     assert engineering["debit"] == "37000.00"
     contrib = _line(us_wages, "2220")
-    assert contrib["credit"] == "2560.00"
+    # Evan's 4,000.00 retro lump is held, so his 401(k) match is drafted on 12,000.00, not 16,000.00.
+    assert contrib["credit"] == "2400.00"
 
     uk_wages = _journal(body["journals"], "UK wages")
     amira_contrib_line = _line(uk_wages, "2220")
     assert amira_contrib_line["credit"] == "990.00"
 
     overpay = _journal(body["journals"], "Overpayment receivable")
-    assert _line(overpay, "1200", "Product")["debit"] == "1500.00"
-    assert _line(overpay, "5000", "Product")["credit"] == "1500.00"
+    # Paid 1-15 March at 15,000.00 a month (7,258.06); the 3 days after 12 March are overpaid.
+    assert _line(overpay, "1200", "Product")["debit"] == "1451.61"
+    assert _line(overpay, "5000", "Product")["credit"] == "1451.61"
     priya = next(note for note in body["notes"] if note["kind"] == "overpayment")
     assert priya["legal_name"] == "Priya Shah"
     assert priya["paid_through"] == "2026-03-15"

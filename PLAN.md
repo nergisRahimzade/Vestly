@@ -575,6 +575,7 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 | 6 | `fix/truth-booking-and-history` | Subledger and payroll read loaded data; January to June world; equity true-up; withdrawn drafts; non-repeating numbers; reopen; SQLite balance trigger; drops load at run time (G1–G11, G14) |
 | 7 | `record/evidence-and-precedents` | Hash-chained evidence log on every write path (the access log folded in); source documents immutable and cited by hash; journal lines carry their source rows; `/audit/verify`, `/audit/events`, `/audit/trace/journal-line/{id}`; precedents with scope, dates and overrule; P-2026-03-001 seeded from the controller's email |
 | 8 | `controls/policy-gate-and-approvals` | Roles and rules (ACC-1, SOD-1/2, LIM-1, BND-1, BNK-1, GRT-1, CTR-1, DUP-1, CLS-1, PRV-1) in policy; gate with rule ids; every refusal in the evidence log; seat identities `vestly.payroll` / `vestly.equity`; finance manager `chris.lam`; approvals bound to the entry hash; two approvers above 25,000 USD with the controller; simulated clock with reminders and escalation; HR call-back log for BNK-1 |
+| 9 | `domain/detectors` | One deterministic detector per case (A01–A12 found; clean people silent; mess explained); routing map and pay calendar in policy; findings carry owners, materiality, draft-allowed and basis; payroll holds Evan's retro lump and Tomas's stale DE line; A12 planted; late-termination pay now prorated by days (Priya's overpayment 1,451.61) |
 
 ### Foundation fixes
 
@@ -619,7 +620,7 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 
 - One deterministic detector per case type, each returning a finding with ranked claims, the trusted value, the owner from the routing map, the materiality decision and the reason code. Both directions: HR → payroll and payroll → HR.
 - Duplicate keys normalized (case, prefixes, suffixes such as `-DUP`, leading zeros).
-- Drafts consult findings: Tomas follows HR to UK; Evan's retro lump is held; A12 opens a reconciling item.
+- Drafts consult findings: Tomas's DE register line is held (HR has him in the UK; the provider must re-run it there, since booking DE-paid wages in the UK would need intercompany accounts); Evan's retro lump is held; A12 opens a reconciling item.
 - The close job runs detectors and opens cases (D5).
 - Tests: each detector fires on its case and stays silent on every true negative and mess item.
 

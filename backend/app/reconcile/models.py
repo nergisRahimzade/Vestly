@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,7 +30,7 @@ class ReconciliationRun(Base):
 class Reconciliation(Base):
     __tablename__ = "reconciliations"
     __table_args__ = (
-        UniqueConstraint("run_id", "fact", "subject_number", name="one_finding_per_subject_per_run"),
+        UniqueConstraint("run_id", "kind", "fact", "subject_number", name="one_finding_per_subject_per_run"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -44,3 +46,15 @@ class Reconciliation(Base):
     ranking_json: Mapped[str] = mapped_column(String, nullable=False)
     policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
     policy_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # What a detector concluded, beyond the ranked claims above.
+    kind: Mapped[str] = mapped_column(String(48), nullable=False, default="employment_dates_conflict")
+    entity_code: Mapped[str | None] = mapped_column(String(8))
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    ask_json: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    materiality: Mapped[str | None] = mapped_column(String(16))
+    materiality_reason: Mapped[str | None] = mapped_column(String(200))
+    draft_allowed: Mapped[bool | None] = mapped_column(Boolean)
+    basis_json: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    details_json: Mapped[str] = mapped_column(String, nullable=False, default="{}")
