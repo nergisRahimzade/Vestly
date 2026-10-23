@@ -64,6 +64,9 @@ ALWAYS_ESCALATE_AS = {
     "unconfirmed_person": "unconfirmed_person",
     "uncleared_funding": "funding_mismatch",
     "funding_booked_not_cleared": "funding_mismatch",
+    "bank_account_reused": "bank_detail_change",
+    "duplicate_payment": "funding_mismatch",
+    "missing_from_register": "unconfirmed_person",
 }
 ACCOUNT_LINE = re.compile(r"(?im)^\s*(?:new\s+)?ac+o?u?n?t\s*:\s*(\d{6,})")
 QUOTE_LINE = re.compile(r"(?im)^.*(?:a[c]+o?u?n?t|deposit|bank).*$")
@@ -1066,6 +1069,347 @@ def fx_band(ctx: Context) -> list[Finding]:
     ]
 
 
+# ---------------------------------------------------------------- history: errors only the loaded months show (task 17)
+#
+# These read every loaded month (January 2022 on in the company world), not just the one being closed.
+# Each stays silent on clean history and names the months it rests on.
+
+
+def _history(ctx: Context, model, *conditions):
+    return list(ctx.session.scalars(select(model).where(model.period <= ctx.period, *conditions).order_by(model.period)))
+
+
+def _period_documents(ctx: Context, system: str, periods) -> list[dict]:
+    rows = ctx.session.scalars(
+        select(SourceDocument).where(SourceDocument.system == system, SourceDocument.period.in_(sorted(set(periods))))
+    )
+    return [document_basis(row.content_hash, row.title) for row in rows]
+
+
+def _live_key(ctx: Context, booking_key: str) -> bool:
+    from app.ledger.service import live_entry_for_key
+
+    return live_entry_for_key(ctx.session, booking_key) is not None
+
+
+def contribution_shortfalls(
+    session: Session, period: str, policy: Policy, include_booked: bool = False
+) -> dict[str, list[PayrollRegisterRow]]:
+    """Closed-month register lines whose employer contribution is not the policy rate, for people whose current
+    month is right (a current-month break is its own case and covers the person's whole problem). Lines already
+    caught up by a live journal are left out, unless include_booked (the payroll service reports them as on file)."""
+    from app.ledger.service import live_entry_for_key
+
+    current = {
+        row.employee_number
+        for row in session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period == period))
+        if (row.gross_wages * policy.contribution_rate(row.entity_code)).quantize(CENT) != row.employer_contribution
+    }
+    known = set(session.scalars(select(HrCensusRow.employee_number).where(HrCensusRow.period <= period)))
+    from app.auth.identities import SEATS
+
+    found: dict[str, list[PayrollRegisterRow]] = defaultdict(list)
+    for row in session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period < period).order_by(PayrollRegisterRow.period)):
+        if row.employee_number in current or row.employee_number not in known:
+            continue
+        # A month Vestly drafted itself was booked at the policy rate already; only the old process's months can be short.
+        wages = live_entry_for_key(session, f"payroll:wages:{row.entity_code}:{row.period}")
+        if wages is not None and wages.prepared_by in SEATS:
+            continue
+        expected = (row.gross_wages * policy.contribution_rate(row.entity_code)).quantize(CENT)
+        if expected == row.employer_contribution:
+            continue
+        if not include_booked and live_entry_for_key(session, f"payroll:contribution_catchup:{row.employee_number}:{row.period}") is not None:
+            continue
+        found[row.employee_number].append(row)
+    return found
+
+
+def contribution_shortfall(ctx: Context) -> list[Finding]:
+    findings = []
+    for number, rows in sorted(contribution_shortfalls(ctx.session, ctx.period, ctx.policy).items()):
+        latest = rows[-1]
+        rate = ctx.policy.contribution_rate(latest.entity_code)
+        months = [row.period for row in rows]
+        shortfall = sum(((row.gross_wages * rate).quantize(CENT) - row.employer_contribution for row in rows), ZERO)
+        claims = {
+            "policy_rate": f"Policy rate {rate * 100:.0f}% of gross in {', '.join(months)}.",
+            "payroll": "; ".join(
+                f"{row.period}: booked {money_str(row.employer_contribution)} on gross {money_str(row.gross_wages)}" for row in rows
+            ),
+        }
+        findings.append(
+            _finding(
+                ctx,
+                "contribution_shortfall",
+                "contribution_rate",
+                subject_number=number,
+                subject_name=latest.legal_name,
+                entity_code=latest.entity_code,
+                trusted_value=f"{rate}",
+                explanation=(
+                    f"{latest.legal_name}'s employer contribution in {', '.join(months)} (closed) was below the policy rate "
+                    f"by {money_str(shortfall)} {latest.currency}. The months stay closed: the shortfall is caught up once, "
+                    f"in {ctx.month.label}, and the payroll provider is asked to explain the rate."
+                ),
+                ranking=_ranking(ctx, "contribution_rate", claims),
+                reason_code="contribution_error_closed_month",
+                amount=shortfall,
+                currency=latest.currency,
+                draft_allowed=True,
+                basis=_period_documents(ctx, "payroll", months) + [rule_basis("CTR-1")],
+                details={"months": months, "per_month": {row.period: money_str((row.gross_wages * rate).quantize(CENT) - row.employer_contribution) for row in rows}},
+            )
+        )
+    return findings
+
+
+def bank_account_reused(ctx: Context) -> list[Finding]:
+    """An active person's HR bank account that someone else was set up with or paid to in any loaded month."""
+    holders: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for row in _history(ctx, HrCensusRow):
+        holders[row.bank_account][row.employee_number].append(row.period)
+    for row in _history(ctx, FundingInstruction):
+        holders[row.destination_account][row.employee_number].append(row.period)
+    findings = []
+    for hr in ctx.hr.values():
+        if hr.status != "active":
+            continue
+        others = {number: periods for number, periods in holders.get(hr.bank_account, {}).items() if number != hr.employee_number}
+        if not others:
+            continue
+        names = {
+            number: ctx.session.scalar(select(HrCensusRow.legal_name).where(HrCensusRow.employee_number == number).limit(1)) or number
+            for number in others
+        }
+        earlier = "; ".join(f"{names[number]} ({number}) {min(periods)} to {max(periods)}" for number, periods in sorted(others.items()))
+        precedents = search_precedents(ctx.session, ctx.month.end, rule="BNK-1", employee=hr.employee_number, entity=hr.entity_code)
+        claims = {
+            "hr": f"HR bank master for {hr.legal_name} is {hr.bank_account}.",
+            "email": f"The same account belonged to {earlier}.",
+        }
+        findings.append(
+            _finding(
+                ctx,
+                "bank_account_reused",
+                "pay_destination",
+                subject_number=hr.employee_number,
+                subject_name=hr.legal_name,
+                entity_code=hr.entity_code,
+                trusted_value="unverified",
+                explanation=(
+                    f"{hr.legal_name}'s pay goes to account {hr.bank_account}, which the history shows was {earlier}. "
+                    f"One account for two people is held until HR confirms the account with {hr.legal_name} by call-back (BNK-1)."
+                ),
+                ranking=_ranking(ctx, "pay_destination", claims),
+                reason_code="bank_account_reused",
+                amount=None,
+                currency=CURRENCY[hr.entity_code],
+                draft_allowed=False,
+                basis=_doc(ctx, "hr", claims["hr"]) + [rule_basis("BNK-1")] + [precedent_basis(row.id, row.decided_by, row.decided_on) for row in precedents],
+                details={"account": hr.bank_account, "earlier_holders": {number: [min(periods), max(periods)] for number, periods in others.items()}},
+            )
+        )
+    return findings
+
+
+def duplicate_payment(ctx: Context) -> list[Finding]:
+    """The same pay paid twice: two cleared lines for one person, month, kind and amount."""
+    cleared = {row.payment_id for row in _history(ctx, BankLine)}
+    groups: dict[tuple, list[FundingInstruction]] = defaultdict(list)
+    for row in _history(ctx, FundingInstruction):
+        if row.payment_id in cleared:
+            groups[(row.employee_number, row.period, row.kind, row.amount)].append(row)
+    findings = []
+    for (_number, period, _kind, amount), rows in sorted(groups.items()):
+        if len(rows) < 2:
+            continue
+        first, *extra = sorted(rows, key=lambda row: row.payment_id)
+        for row in extra:
+            claims = {
+                "bank": f"The bank cleared both {first.payment_id} and {row.payment_id}, {money_str(amount)} {row.currency} each.",
+                "payroll": f"One {period} net pay is owed to {row.legal_name}.",
+            }
+            findings.append(
+                _finding(
+                    ctx,
+                    "duplicate_payment",
+                    "cash_moved",
+                    subject_number=row.payment_id,
+                    subject_name=row.legal_name,
+                    entity_code=row.entity_code,
+                    trusted_value=f"paid twice; {first.payment_id} is the one owed",
+                    explanation=(
+                        f"{row.legal_name}'s {period} net pay went out twice ({first.payment_id} and {row.payment_id}). "
+                        f"{money_str(amount)} {row.currency} is to be recovered; treasury is asked, and nothing is paid again."
+                    ),
+                    ranking=_ranking(ctx, "cash_moved", claims),
+                    reason_code="duplicate_payment",
+                    amount=amount,
+                    currency=row.currency,
+                    draft_allowed=False,
+                    basis=_period_documents(ctx, "bank", [period]) + [rule_basis("DUP-1")],
+                    details={"paid_twice": [first.payment_id, row.payment_id], "period": period},
+                )
+            )
+    return findings
+
+
+def salary_without_approval(ctx: Context) -> list[Finding]:
+    """A rise in HR's salary that no approved compensation action covers, found by walking the salary history."""
+    from app.memory.history import comp_actions
+
+    actions = defaultdict(list)
+    for item in comp_actions(ctx.session):
+        actions[item["employee_number"]].append(item)
+    by_person: dict[str, dict[str, HrCensusRow]] = defaultdict(dict)
+    for row in _history(ctx, HrCensusRow):
+        by_person[row.employee_number][row.period] = row
+    findings = []
+    for hr in ctx.hr.values():
+        if hr.status != "active":
+            continue
+        history = [by_person[hr.employee_number][period] for period in sorted(by_person[hr.employee_number])]
+        approved = (history[0].annual_salary / 12).quantize(CENT)
+        unapproved_from = None
+        for row in history[1:]:
+            salary = (row.annual_salary / 12).quantize(CENT)
+            if salary <= approved:
+                continue
+            covered = any(
+                Decimal(item["monthly_rate"]) == salary and item["effective"] <= month_of(row.period).end and item["entered"] <= row.period
+                for item in actions[hr.employee_number]
+            )
+            if covered:
+                approved = salary
+            elif unapproved_from is None:
+                unapproved_from = row.period
+        current = (hr.annual_salary / 12).quantize(CENT)
+        if unapproved_from is None or current <= approved:
+            continue
+        excess = current - approved
+        claims = {
+            "approved_compensation": f"The last approved pay for {hr.legal_name} is {money_str(approved)} a month.",
+            "payroll": f"HR and the register have paid {money_str(current)} a month since {unapproved_from}.",
+        }
+        findings.append(
+            _finding(
+                ctx,
+                "salary_without_approval",
+                "authorized_compensation",
+                subject_number=hr.employee_number,
+                subject_name=hr.legal_name,
+                entity_code=hr.entity_code,
+                trusted_value=money_str(approved),
+                explanation=(
+                    f"{hr.legal_name}'s salary rose to {money_str(current)} {hr.currency} a month from {unapproved_from}, "
+                    f"but no approved compensation action covers it; the last approved rate is {money_str(approved)}. "
+                    f"{money_str(excess)} a month is above what was approved."
+                ),
+                ranking=_ranking(ctx, "authorized_compensation", claims),
+                reason_code="salary_without_approval",
+                amount=excess,
+                currency=hr.currency,
+                draft_allowed=False,
+                basis=([document_basis(ctx.comp_document.content_hash, ctx.comp_document.title)] if ctx.comp_document else []) + _doc(ctx, "hr"),
+                details={"approved_monthly": money_str(approved), "paid_monthly": money_str(current), "unapproved_from": unapproved_from},
+            )
+        )
+    return findings
+
+
+def department_mismatch(ctx: Context) -> list[Finding]:
+    """The register codes pay to a department HR does not show, in the same entity. Wages follow HR."""
+    findings = []
+    for row in ctx.payroll:
+        hr = ctx.hr.get(row.employee_number)
+        if hr is None or hr.entity_code != row.entity_code or hr.department == row.department:
+            continue
+        since = [
+            item.period
+            for item in _history(ctx, PayrollRegisterRow, PayrollRegisterRow.employee_number == row.employee_number)
+            if item.department == row.department and item.department != hr.department
+        ]
+        claims = {
+            "hr": f"HR has {hr.legal_name} in {hr.entity_code} {hr.department}.",
+            "payroll": f"The register codes the pay to {row.department} ({', '.join(since)}).",
+        }
+        findings.append(
+            _finding(
+                ctx,
+                "department_mismatch",
+                "employment_dates",
+                subject_number=row.employee_number,
+                subject_name=row.legal_name,
+                entity_code=row.entity_code,
+                trusted_value=hr.department,
+                explanation=(
+                    f"{row.legal_name} is in {hr.department} in HR, but the register has coded the pay to {row.department} "
+                    f"since {since[0]}. Vestly books the wages to {hr.department}, as HR says; the department head is asked."
+                ),
+                ranking=_ranking(ctx, "employment_dates", claims),
+                reason_code="department_mismatch",
+                amount=row.gross_wages,
+                currency=row.currency,
+                draft_allowed=True,
+                department=hr.department,
+                basis=_doc(ctx, "hr", claims["hr"]) + _period_documents(ctx, "payroll", since),
+                details={"hr_department": hr.department, "register_department": row.department, "months": since},
+            )
+        )
+    return findings
+
+
+def missing_from_register(ctx: Context) -> list[Finding]:
+    """Someone HR has as active and hired in the cycle, missing from that month's register: not paid."""
+    paid = {(row.period, row.employee_number) for row in _history(ctx, PayrollRegisterRow)}
+    missing: dict[str, list[tuple[str, Decimal, HrCensusRow]]] = defaultdict(list)
+    seen: set[tuple[str, str]] = set()
+    for row in _history(ctx, HrCensusRow):
+        if row.status != "active" or (row.period, row.employee_number) in seen:
+            continue
+        seen.add((row.period, row.employee_number))
+        start, end = pay_cycle_window(ctx.policy, row.entity_code, row.period)
+        if row.hire_date > end or (row.period, row.employee_number) in paid:
+            continue
+        first = max(start, row.hire_date)
+        monthly = row.annual_salary / 12
+        owed = (monthly * _days(first, end) / _days(start, end)).quantize(CENT) if first != start else monthly.quantize(CENT)
+        missing[row.employee_number].append((row.period, owed, row))
+    findings = []
+    for number, months in sorted(missing.items()):
+        latest = months[-1][2]
+        owed = sum((amount for _period, amount, _row in months), ZERO)
+        periods = [period for period, _amount, _row in months]
+        claims = {
+            "hr": f"HR has {latest.legal_name} active from {latest.hire_date}.",
+            "payroll": f"No register line for {latest.legal_name} in {', '.join(periods)}.",
+        }
+        findings.append(
+            _finding(
+                ctx,
+                "missing_from_register",
+                "employment_dates",
+                subject_number=number,
+                subject_name=latest.legal_name,
+                entity_code=latest.entity_code,
+                trusted_value="employed and not paid",
+                explanation=(
+                    f"{latest.legal_name} is employed (HR, from {latest.hire_date}) but was not on the register in "
+                    f"{', '.join(periods)}: {money_str(owed)} {latest.currency} of pay is owed. The provider is asked to pay it."
+                ),
+                ranking=_ranking(ctx, "employment_dates", claims),
+                reason_code="not_on_register",
+                amount=owed,
+                currency=latest.currency,
+                draft_allowed=False,
+                basis=_period_documents(ctx, "hr", periods) + _period_documents(ctx, "payroll", periods),
+                details={"months": periods, "owed": money_str(owed)},
+            )
+        )
+    return findings
+
+
 DETECTORS = (
     bank_detail_change,
     employment_dates,
@@ -1078,6 +1422,12 @@ DETECTORS = (
     funding_against_bank,
     explained_mess,
     fx_band,
+    contribution_shortfall,
+    bank_account_reused,
+    duplicate_payment,
+    salary_without_approval,
+    department_mismatch,
+    missing_from_register,
 )
 
 

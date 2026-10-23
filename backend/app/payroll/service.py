@@ -96,7 +96,7 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
                     "note": "No wage line. Cash that already left goes to suspense.",
                 }
             )
-        wage = _wage_journal(session, period, entity, confirmed, people, actor, on_file)
+        wage = _wage_journal(session, period, entity, confirmed, people, actor, on_file, hr_rows)
         if wage is not None:
             journals.append(wage)
         for ghost in ghosts:
@@ -292,6 +292,7 @@ def _wage_journal(
     people: list[dict],
     actor: Actor,
     on_file: list[dict],
+    hr_rows: list[HrCensusRow] = (),
 ) -> JournalEntry | None:
     if not rows:
         return None
@@ -299,7 +300,7 @@ def _wage_journal(
     buckets: dict = {}
     for row in rows:
         person = by_number[row.employee_number]
-        department = row.department
+        department = _hr_department(hr_rows, row)
         ref = [_source(session, "payroll_register_rows", row)]
         _add(buckets, "5000", department, Decimal(person["gross_wages"]), ZERO, ref)
         _add(buckets, "5100", department, Decimal(person["employer_tax"]), ZERO, ref)
@@ -351,6 +352,12 @@ def _suspense_journal(
     )
 
 
+def _hr_department(hr_rows, row: PayrollRegisterRow) -> str:
+    """Expense follows HR's department; the register's coding is used only when HR has nothing for that entity."""
+    hr = _hr_for(list(hr_rows), row.employee_number)
+    return hr.department if hr is not None and hr.entity_code == row.entity_code else row.department
+
+
 def _hr_for(hr_rows: list[HrCensusRow], employee_number: str) -> HrCensusRow | None:
     matches = [row for row in hr_rows if row.employee_number == employee_number]
     return matches[0] if matches else None
@@ -380,7 +387,7 @@ def _uk_accrual_journal(
         wages = accrue_wages(monthly, days, month_length(month.end))
         tax = quantize(wages * employer_tax)
         contrib = policy_contribution(wages, policy.contribution_rate("UK"))
-        department = row.department
+        department = _hr_department(hr_rows, row)
         refs = [_source(session, "payroll_register_rows", row)]
         if hr is not None:
             refs.append(_source(session, "hr_census_rows", hr))
@@ -424,6 +431,54 @@ def _uk_accrual_reversal(session: Session, period: str, actor: Actor, on_file: l
         f"payroll:uk_accrual_reversal:{prior}",
         on_file,
     )
+
+
+def draft_contribution_catchups(session: Session, period: str, actor: Actor) -> dict:
+    """Corrections the close drafts to resolve contribution_shortfall cases: not part of the routine payroll draft."""
+    require(actor, JOURNAL_DRAFT, "draft contribution catch-ups")
+    enforce(check_seat(actor, "payroll"), actor, "draft contribution catch-ups")
+    notes: list[dict] = []
+    on_file: list[dict] = []
+    journals = _contribution_catchups(session, period, load_policy(), actor, notes, on_file)
+    return {"period": period, "journals": journals, "notes": notes, "already_on_file": on_file}
+
+
+def _contribution_catchups(session: Session, period: str, policy, actor: Actor, notes: list[dict], on_file: list[dict]) -> list[JournalEntry]:
+    """A closed month's employer contribution booked below the policy rate is caught up once, in this month.
+
+    The key is the person and the month the pay belongs to, so a later close finds it on file and books nothing.
+    """
+    from app.reconcile.detectors import contribution_shortfalls
+
+    journals = []
+    for number, rows in sorted(contribution_shortfalls(session, period, policy, include_booked=True).items()):
+        for row in rows:
+            shortfall = quantize(row.gross_wages * policy.contribution_rate(row.entity_code)) - row.employer_contribution
+            if shortfall <= 0:
+                continue
+            hr = session.scalar(
+                select(HrCensusRow).where(HrCensusRow.employee_number == number, HrCensusRow.period == row.period).limit(1)
+            )
+            department = hr.department if hr is not None and hr.entity_code == row.entity_code else row.department
+            buckets: dict = {}
+            refs = [_source(session, "payroll_register_rows", row)]
+            _add(buckets, "5110", department, shortfall, ZERO, refs)
+            _add(buckets, "2220", None, ZERO, shortfall, refs)
+            entry = _post_draft(
+                session,
+                row.entity_code,
+                period,
+                f"Employer contribution catch-up for {row.legal_name}, {month_of(row.period).label} booked below the "
+                f"policy rate, caught up in {month_of(period).label}",
+                buckets,
+                actor,
+                f"payroll:contribution_catchup:{number}:{row.period}",
+                on_file,
+            )
+            if entry is not None:
+                journals.append(entry)
+                notes.append({"kind": "contribution_catchup", "employee_number": number, "from_period": row.period, "amount": money_str(shortfall), "ask": "payroll.provider"})
+    return journals
 
 
 def _overpayment_journals(

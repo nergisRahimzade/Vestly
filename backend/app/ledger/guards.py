@@ -458,7 +458,7 @@ POSTGRES_GUARDS = [
 
 
 # Cases and funding: the history of a case, people's answers, its links, and what the bank executed.
-APPEND_ONLY_TABLES = ("case_transitions", "case_answers", "case_links", "bank_transfers", "error_log", "fx_rates")
+APPEND_ONLY_TABLES = ("case_transitions", "case_answers", "case_links", "bank_transfers", "error_log", "fx_rates", "observations")
 for _table in APPEND_ONLY_TABLES:
     for _event in ("UPDATE", "DELETE"):
         SQLITE_GUARDS.append(

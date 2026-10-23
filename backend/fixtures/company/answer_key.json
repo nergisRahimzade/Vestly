@@ -449,7 +449,7 @@
     {
       "id": "H02",
       "name": "contribution_break_in_closed_month",
-      "kind": "contribution_rate_break",
+      "kind": "contribution_shortfall",
       "period": "2026-07",
       "scored_in": "2026-10",
       "subjects": [
@@ -471,7 +471,7 @@
         "reopen:UK:2026-07"
       ],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Freya Lawson's July 2026 pension was booked at 3% (216.00) instead of 5% (360.00). July is closed: the 144.00 is caught up once in October.",
       "expected_amount": "144.00",
       "expected_currency": "GBP"
@@ -499,7 +499,7 @@
       },
       "must_not": [],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Elena Petrova, hired in August 2026, was set up with the account Marcus Bell was paid to until 2023. Hold her pay destination until HR confirms by call-back."
     },
     {
@@ -525,7 +525,7 @@
       },
       "must_not": [],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Jonas Brandt's August 2026 net pay was in the payment file twice and the bank paid both. Recover 5,550.00; nothing is paid again.",
       "expected_amount": "5550.00",
       "expected_currency": "EUR"
@@ -550,7 +550,7 @@
       },
       "must_not": [],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Chloe Martin's last approved raise (April 2024) set 9,450.00 a month; HR has paid 10,400.00 since March 2025 with no approved action. 950.00 a month above what was approved.",
       "expected_amount": "950.00",
       "expected_currency": "USD"
@@ -575,7 +575,7 @@
       },
       "must_not": [],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Diego Alvarez is GTM in HR; the register coded his pay to Engineering from September 2026. Wages follow HR's department.",
       "expected_amount": "8800.00",
       "expected_currency": "USD"
@@ -600,7 +600,7 @@
       },
       "must_not": [],
       "history_only": true,
-      "detected_by": "task-17",
+      "detected_by": "history detector",
       "note": "Hugo Laurent joined on 8 September 2026 and is in HR, but the provider left him off the September register: 9,583.33 of September pay is owed.",
       "expected_amount": "9583.33",
       "expected_currency": "USD"

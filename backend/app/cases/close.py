@@ -19,7 +19,7 @@ from app.controls.posting import request_funding
 from app.equity.service import draft_equity
 from app.errors import doing
 from app.ledger.errors import LedgerError
-from app.payroll.service import draft_payroll
+from app.payroll.service import draft_contribution_catchups, draft_payroll
 from app.record.evidence import record
 from app.reconcile.engine import reconcile_period
 
@@ -31,6 +31,10 @@ FUNDING_KINDS = {"uncleared_funding"}
 def run_close(session: Session, period: str) -> dict:
     with doing("reconciling the sources", period=period):
         run, _ = reconcile_period(session, period, PAYROLL)
+    with doing("learning what is normal from the history", period=period):
+        from app.memory.history import learn
+
+        learned = learn(session, period, PAYROLL.handle)
     with doing("drafting payroll", period=period):
         payroll = draft_payroll(session, period, PAYROLL)
     waiting: list[dict] = []
@@ -48,18 +52,22 @@ def run_close(session: Session, period: str) -> dict:
         session.commit()
     with doing("opening and refreshing cases", period=period):
         cases = sync_cases(session, run.id, period)
+    with doing("drafting the corrections the history cases call for", period=period):
+        corrections = draft_contribution_catchups(session, period, PAYROLL)
+    with doing("linking drafts to their cases", period=period):
         link_drafts(session, period)
     with doing("asking for the funding still owed", period=period):
         funding, refused = request_due_funding(session, period)
     return {
         "period": period,
         "reconciliation_run": run.id,
-        "journals": [entry.number for entry in payroll["journals"] + equity["journals"]],
+        "journals": [entry.number for entry in payroll["journals"] + equity["journals"] + corrections["journals"]],
         "held": payroll["held"],
         "cases": [as_dict(case) for case in cases],
         "funding_requests": [row.id for row in funding],
         "refused": refused,
         "waiting": waiting,
+        "observations": len(learned),
     }
 
 

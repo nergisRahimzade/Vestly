@@ -416,6 +416,55 @@ def search_precedents_tool(ctx, args: PrecedentInput) -> ToolResult:
     return ToolResult.ok({"on": today(ctx.session), "precedents": [precedent_dict(row) for row in rows]}, establishes=[(row.id, "found") for row in rows])
 
 
+@register(
+    "get_employee_history", "read", ("payroll", "equity"), "read_scoped",
+    """The memory of the person on this case, from every loaded month (four years and more): entity and department
+    over time, HR salary over time, approved pay changes, pay received month by month, payments and whether the
+    bank cleared them, bank accounts over time, call-backs, earlier cases and the rulings that cover them. Use it to
+    see whether something is new or has been true for years. Only the person the case is about.""",
+    PersonInput,
+)
+def get_employee_history(ctx, args: PersonInput) -> ToolResult:
+    from app.memory.history import employee_timeline
+
+    _require_person(ctx, args.employee_number)
+    timeline = employee_timeline(ctx.session, args.employee_number, ctx.period)
+    if timeline is None:
+        return ToolResult.ok({"employee_number": args.employee_number, "found": False}, establishes=[(args.employee_number, "not_found")])
+    return ToolResult.ok(timeline, establishes=[(args.employee_number, "found")])
+
+
+class DepartmentInput(ToolInput):
+    entity_code: Literal["US", "UK", "DE"]
+    department: Literal["Engineering", "Product", "GTM", "G&A"]
+
+
+@register(
+    "get_department_history", "read", ("payroll", "equity"), "read_scoped",
+    """What is normal in a department, learned from the last four years: headcount by month, the monthly gross pay
+    band and the employer contribution rate, with the observation Vestly recorded (its months and evidence row).
+    Totals only; months with fewer than three people are hidden. Not for one person's pay.""",
+    DepartmentInput,
+)
+def get_department_history(ctx, args: DepartmentInput) -> ToolResult:
+    from app.memory.history import department_baseline, observation_dict
+    from app.memory.models import Observation
+
+    baseline = department_baseline(ctx.session, args.entity_code, args.department, ctx.period)
+    learned = ctx.session.scalar(
+        select(Observation)
+        .where(Observation.kind == "department_baseline", Observation.subject == f"{args.entity_code}:{args.department}")
+        .order_by(Observation.as_of.desc(), Observation.learned_at.desc())
+        .limit(1)
+    )
+    subject = f"{args.entity_code}:{args.department}"
+    return ToolResult.ok(
+        {**baseline, "observation": None if learned is None else observation_dict(learned)},
+        establishes=[(subject, "found" if baseline["months"] else "not_found")],
+        partial=bool(baseline["months_hidden_small_group"]),
+    )
+
+
 # ---------------------------------------------------------------- compute
 
 

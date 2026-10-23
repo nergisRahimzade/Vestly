@@ -57,6 +57,7 @@ def init_db(engine=None) -> None:
     from app.controls import models as controls_models  # noqa: F401
     from app.cases import models as cases_models  # noqa: F401
     from app.fx import models as fx_models  # noqa: F401
+    from app.memory import models as memory_models  # noqa: F401
     from app.ledger.guards import install_guards
     from app.ledger.seed import seed
 

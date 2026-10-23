@@ -65,10 +65,21 @@ def hr_bank_account(session: Session, employee_number: str, period: str) -> str 
     return None if row is None else row.bank_account
 
 
+def _other_holders(session: Session, employee_number: str, account: str, period: str) -> list[str]:
+    """Anyone else set up with this account in any loaded HR month up to the period."""
+    rows = session.execute(
+        select(HrCensusRow.employee_number, HrCensusRow.legal_name)
+        .where(HrCensusRow.bank_account == account, HrCensusRow.employee_number != employee_number, HrCensusRow.period <= period)
+        .distinct()
+    ).all()
+    return sorted(f"{name} ({number})" for number, name in rows)
+
+
 def check_pay_destination(session: Session, employee_number: str, account: str, period: str, pay_date: str) -> Verdict:
     """Net pay may go to the HR bank master. Any other account needs a confirmed call-back in the window."""
     master = hr_bank_account(session, employee_number, period)
-    if master is not None and master == account:
+    others = _other_holders(session, employee_number, account, period)
+    if master is not None and master == account and not others:
         return ALLOWED
     window = load_policy().callback_window_days
     earliest = add_days(pay_date, -window)
@@ -85,6 +96,12 @@ def check_pay_destination(session: Session, employee_number: str, account: str, 
         )
     )
     if not calls:
+        if master == account and others:
+            return deny(
+                "BNK-1",
+                f"Account {account} is {employee_number}'s HR bank master, but it also belonged to {', '.join(others)}; "
+                f"no call-back between {earliest} and {pay_date} confirms it.",
+            )
         return deny(
             "BNK-1",
             f"Account {account} is not the HR bank master for {employee_number}, and no call-back between "

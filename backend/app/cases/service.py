@@ -630,6 +630,7 @@ def timeline(session: Session, case: Case) -> dict:
             "authority_row": finding.fact,
             "ranking": json.loads(finding.ranking_json),
             "basis": json.loads(finding.basis_json),
+            "details": json.loads(finding.details_json),
             "draft_allowed": finding.draft_allowed,
         },
         "steps": [

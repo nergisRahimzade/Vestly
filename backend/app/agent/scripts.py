@@ -22,6 +22,12 @@ INVESTIGATIONS = {
     "vest_schedule_mismatch": [("compute_sbc_expense", "none")],
     "duplicate_grant": [("compute_sbc_expense", "none")],
     "unknown_platform_grant": [("compute_sbc_expense", "none")],
+    "contribution_shortfall": [("get_employee_history", "person"), ("compute_contributions", "entity")],
+    "bank_account_reused": [("get_employee_history", "person"), ("search_precedents", "bnk")],
+    "duplicate_payment": [("get_bank_transactions", "payment")],
+    "salary_without_approval": [("get_employee_history", "person"), ("get_comp_actions", "person")],
+    "department_mismatch": [("get_employee_history", "person"), ("get_department_history", "department")],
+    "missing_from_register": [("get_employee_history", "person"), ("match_register", "person")],
 }
 DEFAULT_INVESTIGATION = [("get_employee_record", "person"), ("match_register", "person")]
 OUTCOME_SENTENCE = {
@@ -58,6 +64,9 @@ def _investigation(case: dict, available: set[str]) -> list[dict]:
         "bnk": {"rule": "BNK-1"},
         "none": {},
     }
+    department = (case["finding"].get("details") or {}).get("hr_department")
+    if department:
+        inputs["department"] = {"entity_code": case["entity_code"], "department": department}
     emails = [item for item in case["finding"]["basis"] if item.get("type") == "document" and "email" in (item.get("title") or "").lower()]
     if emails:
         inputs["document"] = {"content_hash": emails[0]["doc_sha256"]}

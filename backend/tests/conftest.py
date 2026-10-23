@@ -16,6 +16,7 @@ from app.record import models as record_models  # noqa: F401
 from app.controls import models as controls_models  # noqa: F401
 from app.cases import models as cases_models  # noqa: F401
 from app.fx import models as fx_models  # noqa: F401
+from app.memory import models as memory_models  # noqa: F401
 from app.world import models as world_models  # noqa: F401
 from app.main import app
 

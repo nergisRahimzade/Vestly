@@ -31,8 +31,8 @@ from app.world.loader import load_world
 
 CONTROLLER = Actor("dana.ruiz", "controller")
 CORE = {f"A{number:02d}" for number in range(1, 14)}
-CAUGHT_FROM_HISTORY_NOW = {"H01", "H08"}  # the existing detectors scan every loaded month
-NEEDS_HISTORY_DETECTORS = {"H02", "H03", "H04", "H05", "H06", "H07"}  # task 17
+CAUGHT_FROM_HISTORY_NOW = {"H01", "H08"}  # caught by the detectors that already scanned every loaded month
+NEEDS_HISTORY_DETECTORS = {"H02", "H03", "H04", "H05", "H06", "H07"}  # caught by the history detectors (task 17)
 
 
 def _months(first: str, last: str) -> list[str]:
@@ -142,9 +142,10 @@ def test_the_october_close_waits_for_the_october_rate_and_opens_the_cases(client
 def test_the_company_october_close_scores_three_times_with_no_false_holds():
     report, results = score_period("2026-10", runs=3, world="company")
     cases = {row["id"]: row for row in report["cases"]}
-    assert {case_id for case_id, row in cases.items() if row["caught"]} == CORE | CAUGHT_FROM_HISTORY_NOW
-    for case_id in NEEDS_HISTORY_DETECTORS:
-        assert all("no single" in problem for problem in cases[case_id]["problems"]), cases[case_id]
+    # Task 17: the history detectors catch the six cases task 16 planted for them; every case is caught, three times.
+    assert {case_id for case_id, row in cases.items() if row["caught"]} == CORE | CAUGHT_FROM_HISTORY_NOW | NEEDS_HISTORY_DETECTORS, {
+        case_id: row["problems"] for case_id, row in cases.items() if not row["caught"]
+    }
     metrics = report["metrics"]
     assert metrics["false_holds"]["value"] == 0 and metrics["false_holds"]["of"] > 500
     assert metrics["evidence_complete"]["rate"] == 1.0

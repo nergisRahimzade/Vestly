@@ -107,6 +107,12 @@ routing:
   duplicate_grant: [morgan.li]
   unknown_platform_grant: [morgan.li]
   transfer_not_reflected: [department_head, dana.ruiz]
+  contribution_shortfall: [payroll.provider]
+  bank_account_reused: [lee.park]
+  duplicate_payment: [alex.moreau]
+  salary_without_approval: [dana.ruiz]
+  department_mismatch: [department_head]
+  missing_from_register: [payroll.provider]
 # Pay cycles. The UK pays the 26th of the previous month to the 25th; the others pay calendar months.
 pay_calendar:
   US: calendar_month
