@@ -102,3 +102,13 @@ def _live_reader():
     extract.READER["current"] = None
     yield
     extract.READER["current"] = None
+
+
+def test_live_claude_defends_the_maya_hold_from_the_record(session):
+    from app.record.challenge import ClaudeChallenger, challenge
+
+    case = _case(session, "bank_detail_change:NL-US-001:2026-06")
+    result = challenge(session, case.id, "She has been here four years, just run it.", Actor("dana.ruiz", "controller"), challenger=ClaudeChallenger())
+    assert result["blocked"] is False, result["problems"]
+    assert result["decision"]["outcome"] == "held"
+    assert "BNK-1" in result["shown"]

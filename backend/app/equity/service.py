@@ -105,9 +105,27 @@ def _inputs_hash(session: Session, through_period: str) -> str:
 # ---------------------------------------------------------------- the subledger
 
 
+# Schedules by (month, fingerprint of their inputs): the same HR files, grants and rates give the same schedule,
+# so a close that reads the subledger several times computes it once. Any new input changes the key.
+_SCHEDULES: dict[tuple[str, str], tuple[tuple[GrantMonth, ...], tuple[dict, ...]]] = {}
+_SCHEDULE_CACHE_SIZE = 16
+
+
 def compute_schedules(session: Session, through_period: str) -> tuple[list[GrantMonth], list[dict]]:
     """Build every grant's schedule in memory. Nothing is written."""
     parse_period(through_period)
+    key = (through_period, _inputs_hash(session, through_period))
+    if key in _SCHEDULES:
+        rows, notes = _SCHEDULES[key]
+        return list(rows), [dict(note) for note in notes]
+    rows, notes = _compute_schedules(session, through_period)
+    if len(_SCHEDULES) >= _SCHEDULE_CACHE_SIZE:
+        _SCHEDULES.pop(next(iter(_SCHEDULES)))
+    _SCHEDULES[key] = (tuple(rows), tuple(dict(note) for note in notes))
+    return rows, notes
+
+
+def _compute_schedules(session: Session, through_period: str) -> tuple[list[GrantMonth], list[dict]]:
     facts = employee_facts(session, through_period)
     cards = rate_cards(session)
     rows: list[GrantMonth] = []

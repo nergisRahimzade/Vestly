@@ -40,6 +40,10 @@ class ConfirmIn(BaseModel):
     accept: bool
 
 
+class ChallengeIn(BaseModel):
+    question: str = Field(max_length=2000)
+
+
 class FundingIn(BaseModel):
     period: str
     payment_ids: list[str]
@@ -109,6 +113,24 @@ def confirm(draft_id: str, body: ConfirmIn, db: Session = Depends(get_db), who: 
 
     case = confirm_reply(db, draft_id, who, body.accept)
     return service.timeline(db, case)
+
+
+@router.post("/cases/{case_id}/challenge")
+def challenge_case(case_id: str, body: ChallengeIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """A reviewer questions a decision; the answer comes only from that decision's record, and the decision stands."""
+    from app.record.challenge import challenge
+
+    return challenge(db, case_id, body.question, who)
+
+
+@router.post("/simulate/approvers")
+def simulate_approvers(period: str, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """Demo: the playbook's people answer what is open (controller only, like moving the clock)."""
+    from app.approvers.simulate import simulate
+    from app.auth.permissions import CLOCK_ADVANCE
+
+    require(who, CLOCK_ADVANCE, "run the simulated approvers")
+    return {"period": period, "actions": simulate(db, period)}
 
 
 @router.post("/cases/resume")

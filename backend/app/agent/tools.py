@@ -845,6 +845,24 @@ class PrecedentProposalInput(ToolInput):
     PrecedentProposalInput,
 )
 def propose_precedent(ctx, args: PrecedentProposalInput) -> ToolResult:
+    import re as _re
+
+    from app.ledger.models import new_id
+    from app.record.models import PrecedentProposal
+
+    if not _re.match(r"^[A-Z]{3}-\d+$", args.rule) or args.rule not in dict(load_policy().rules):
+        return ToolResult.refused(None, f"{args.rule} is not a rule in the policy.")
     scope = {key: value for key, value in (("entity", args.scope_entity), ("employee", args.scope_employee)) if value}
-    return _ask(ctx, [CONTROLLER_HANDLE], f"Proposed precedent under {args.rule}, scope {scope or 'the whole rule'}: {args.ruling}")
+    result = _ask(ctx, [CONTROLLER_HANDLE], f"Proposed precedent under {args.rule}, scope {scope or 'the whole rule'}: {args.ruling} Confirm to make it a precedent, or decline.")
+    if result.status != "pending":
+        return result
+    question_id = result.data["questions"][0]["id"]
+    ctx.session.add(
+        PrecedentProposal(
+            id=new_id(), case_id=ctx.case.id, question_id=question_id, rule=args.rule, scope_json=json.dumps(scope, sort_keys=True),
+            ruling=args.ruling, proposed_by=ctx.seat.handle, status="proposed",
+        )
+    )
+    ctx.session.commit()
+    return result
 

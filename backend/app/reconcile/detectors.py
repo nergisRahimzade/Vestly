@@ -1098,7 +1098,7 @@ def contribution_shortfalls(
     """Closed-month register lines whose employer contribution is not the policy rate, for people whose current
     month is right (a current-month break is its own case and covers the person's whole problem). Lines already
     caught up by a live journal are left out, unless include_booked (the payroll service reports them as on file)."""
-    from app.ledger.service import live_entry_for_key
+    from app.ledger.service import LIVE_STATUSES
 
     current = {
         row.employee_number
@@ -1108,18 +1108,26 @@ def contribution_shortfalls(
     known = set(session.scalars(select(HrCensusRow.employee_number).where(HrCensusRow.period <= period)))
     from app.auth.identities import SEATS
 
+    # Every live wage and catch-up key at once (one query, not one per register line).
+    live = dict(
+        session.execute(
+            select(JournalEntry.booking_key, JournalEntry.prepared_by).where(
+                JournalEntry.status.in_(LIVE_STATUSES),
+                JournalEntry.booking_key.like("payroll:wages:%") | JournalEntry.booking_key.like("payroll:contribution_catchup:%"),
+            )
+        ).all()
+    )
     found: dict[str, list[PayrollRegisterRow]] = defaultdict(list)
     for row in session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period < period).order_by(PayrollRegisterRow.period)):
         if row.employee_number in current or row.employee_number not in known:
             continue
         # A month Vestly drafted itself was booked at the policy rate already; only the old process's months can be short.
-        wages = live_entry_for_key(session, f"payroll:wages:{row.entity_code}:{row.period}")
-        if wages is not None and wages.prepared_by in SEATS:
+        if live.get(f"payroll:wages:{row.entity_code}:{row.period}") in SEATS:
             continue
         expected = (row.gross_wages * policy.contribution_rate(row.entity_code)).quantize(CENT)
         if expected == row.employer_contribution:
             continue
-        if not include_booked and live_entry_for_key(session, f"payroll:contribution_catchup:{row.employee_number}:{row.period}") is not None:
+        if not include_booked and f"payroll:contribution_catchup:{row.employee_number}:{row.period}" in live:
             continue
         found[row.employee_number].append(row)
     return found

@@ -3,6 +3,7 @@
 import json
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,18 @@ from app.record.evidence import as_dict
 from app.record.models import EvidenceEvent
 
 router = APIRouter(prefix="/agent")
+
+
+class AskIn(BaseModel):
+    question: str = Field(max_length=2000)
+
+
+@router.post("/ask")
+def ask_vestly(body: AskIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """Ask Vestly a question. One person's pay only for those allowed to see it (PRV-1); totals otherwise."""
+    from app.agent.ask import ask
+
+    return ask(db, who, body.question)
 
 
 @router.post("/cases/{case_id}/run")

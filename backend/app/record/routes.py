@@ -228,3 +228,18 @@ def list_errors(limit: int = 100, db: Session = Depends(get_db), who: Actor = De
         }
         for row in rows
     ]
+
+
+@router.get("/audit/replay")
+def replay_record(
+    on: str,
+    employee: str | None = None,
+    case_id: str | None = None,
+    db: Session = Depends(get_db),
+    who: Actor = Depends(current_actor),
+) -> dict:
+    """What Vestly knew on a date: drops received by then, rulings in force, decisions recorded, the policy version."""
+    from app.record.replay import replay
+
+    require(who, AUDIT_READ, "replay the record")
+    return replay(db, on, employee=employee, case_id=case_id)

@@ -242,10 +242,11 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 15: real exchange rates from Open Exchange Rates (`app/fx/`, `fixtures/fx`, month-end lock rule) | `fx/open-exchange-rates` |
 | Task 16: the company world (307 people, Jan 2022–Oct 2026, October open), history cases, two worlds | `data/four-years-company` |
 | Task 17: employee memory (`app/memory/`), learned observations, history detectors; company October 21/21 | `agent/employee-memory` |
+| Task 18: replay, challenge, precedent proposals, simulated approvers, `/agent/ask` | `agent/challenge-replay-and-approvers` |
 
 **Plan revised 2026-10-23 (D20–D22):** real Open Exchange Rates rates at each month-end; the world aligned with today (Jan 2022–Sep 2026 closed, October 2026 open, Nov–Dec to come); four years of history for every employee; planted errors in July–December. Until task 16 lands, the code still has the January–June world with June open (section 10).
 
-**Next: task 18 `agent/challenge-replay-and-approvers`** (pull from `agent/employee-memory`), then 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
+**Next: task 19 `frontend/inbox-timeline-evidence`** (pull from `agent/challenge-replay-and-approvers`), then 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 

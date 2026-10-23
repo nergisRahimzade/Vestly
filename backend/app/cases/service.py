@@ -301,6 +301,7 @@ def apply_answers(session: Session, case: Case) -> None:
         if case.state in FINAL:
             question.applied = True
             continue
+        _settle_proposal(session, case, question, latest)
         if question.status == "declined":
             if case.state != "declined":
                 move(session, case, "declined", who, f"{who} declined: {latest.note}")
@@ -320,6 +321,32 @@ def apply_answers(session: Session, case: Case) -> None:
             _reinvestigate(session, case, who)
         question.applied = True
         session.flush()
+
+
+def _settle_proposal(session: Session, case: Case, question: CaseQuestion, latest: CaseAnswer) -> None:
+    """A precedent Vestly proposed becomes one only when the controller confirms; a decline records the no."""
+    from app.record.models import PrecedentProposal
+    from app.record.precedents import rule_precedent
+
+    proposal = session.scalar(select(PrecedentProposal).where(PrecedentProposal.question_id == question.id))
+    if proposal is None or proposal.status != "proposed":
+        return
+    if question.status == "answered":
+        row = rule_precedent(
+            session,
+            Actor(latest.answered_by, ROLE_OF.get(latest.answered_by, "none")),
+            rule=proposal.rule,
+            scope=json.loads(proposal.scope_json),
+            ruling=proposal.ruling,
+            reason=latest.note or f"Confirmed by {latest.answered_by} on case {case.key}.",
+            valid_from=today(session),
+        )
+        proposal.status, proposal.precedent_id = "confirmed", row.id
+        record(session, latest.answered_by, "precedent_from_case", "case", case.id, case_id=case.id, payload={"precedent": row.id, "proposal": proposal.id},
+               basis=[{"type": "precedent", "id": row.id, "decided_by": row.decided_by, "on": row.decided_on}], sim_at=today(session))
+    else:
+        proposal.status = "declined"
+    session.flush()
 
 
 def _reinvestigate(session: Session, case: Case, who: str) -> None:

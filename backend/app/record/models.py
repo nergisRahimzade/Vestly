@@ -34,6 +34,23 @@ class EvidenceEvent(Base):
     hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
 
 
+class PrecedentProposal(Base):
+    """Vestly suggests a ruling's scope; it becomes a precedent only when the controller confirms the question."""
+
+    __tablename__ = "precedent_proposals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    case_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    question_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    rule: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_json: Mapped[str] = mapped_column(String, nullable=False)
+    ruling: Mapped[str] = mapped_column(String(500), nullable=False)
+    proposed_by: Mapped[str] = mapped_column(String(48), nullable=False)
+    # proposed, confirmed, declined
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    precedent_id: Mapped[str | None] = mapped_column(String(32))
+
+
 class ErrorLog(Base):
     """An unexpected error: where it happened (file, line, function), why, and what was being done. Append-only."""
 
