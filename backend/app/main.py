@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.agent.routes import router as agent_router
 from app.cases.routes import router as cases_router
 from app.controls.gate import log_refusal
 from app.controls.routes import router as controls_router
@@ -43,6 +44,7 @@ app.include_router(equity_router)
 app.include_router(record_router)
 app.include_router(controls_router)
 app.include_router(cases_router)
+app.include_router(agent_router)
 
 
 @app.exception_handler(LedgerError)

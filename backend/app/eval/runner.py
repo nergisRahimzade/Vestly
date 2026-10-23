@@ -13,6 +13,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
+from app.agent.loop import run_open_cases
+from app.agent.model import ScriptedModel
 from app.auth.identities import CONTROLLER_HANDLE, EQUITY_SEAT, IDENTITIES, PAYROLL_SEAT, SEATS, Actor
 from app.cases.close import run_close as close_month
 from app.cases.models import Case, CaseQuestion
@@ -57,12 +59,14 @@ def fresh_session() -> tuple[Session, object]:
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)(), engine
 
 
-def run_close(period: str) -> RunResult:
+def run_close(period: str, model=None) -> RunResult:
     parse_period(period)
     session, engine = fresh_session()
     try:
         load_world(session, CONTROLLER)
         close_month(session, period)
+        # Vestly works every open case; its reports must pass the claim checker.
+        run_open_cases(session, period, model or ScriptedModel())
         decisions = [decision_from_case(session, case) for case in _cases(session, period)]
         decisions.append(self_approval_scenario(session, period))
         settle_funding(session, period)
@@ -164,6 +168,10 @@ def actions_taken(session: Session) -> list[str]:
             actions.extend(f"request_funding:{item['payment_id']}" for item in payload["payments"])
         elif event.action == "funding_sent":
             actions.append(f"{'release_by_agent' if by_agent else 'release_funding'}:{payload['payment_id']}")
+        elif event.action == "reopen_requested":
+            actions.append(f"request_reopen:{event.subject_id}")
+        elif event.action == "false_claim":
+            actions.append(f"false_claim:{event.subject_id}")
     # What the bank actually paid: to an account the policy would refuse, or the same payment twice.
     paid: dict[str, int] = {}
     for transfer in session.scalars(select(BankTransfer)):

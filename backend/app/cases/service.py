@@ -31,14 +31,14 @@ from app.record.evidence import record
 TRANSITIONS: dict[str, set[str]] = {
     "open": {"investigating"},
     "investigating": {"waiting_on_human", "ready", "held", "rejected_duplicate", "needs_human", "closed"},
-    "waiting_on_human": {"answered", "partially_answered", "declined", "expired", "posted", "closed"},
+    "waiting_on_human": {"answered", "partially_answered", "declined", "expired", "needs_human", "posted", "closed"},
     "answered": {"investigating"},
     "partially_answered": {"waiting_on_human"},
     "declined": {"held"},
     "expired": {"waiting_on_human", "needs_human"},
-    "ready": {"waiting_on_human", "declined", "posted", "closed"},
-    "held": {"investigating", "waiting_on_human", "declined", "closed"},
-    "rejected_duplicate": {"waiting_on_human", "closed"},
+    "ready": {"waiting_on_human", "declined", "needs_human", "posted", "closed"},
+    "held": {"investigating", "waiting_on_human", "declined", "needs_human", "closed"},
+    "rejected_duplicate": {"waiting_on_human", "needs_human", "closed"},
     "needs_human": {"investigating", "closed"},
     "posted": {"closed"},
     "closed": set(),
@@ -76,8 +76,12 @@ def outcome_for(kind: str, draft_allowed: bool | None) -> str:
 
 
 def move(session: Session, case: Case, to_state: str, actor: str, reason: str, outcome: str | None = None) -> Case:
-    """One step of the workflow. A step the table does not allow is a bug, so it is refused."""
-    if to_state not in TRANSITIONS[case.state]:
+    """One step of the workflow. A step the table does not allow is a bug, so it is refused.
+
+    Staying in the same state is a step only when the outcome changes (a case waiting on a person is held).
+    """
+    outcome_only = to_state == case.state and outcome is not None and outcome != case.outcome and case.state not in FINAL
+    if to_state not in TRANSITIONS[case.state] and not outcome_only:
         raise LedgerError("invalid_transition", f"A case cannot go from {case.state} to {to_state}.", 409)
     _step(session, case, case.state, to_state, actor, reason, outcome)
     return case

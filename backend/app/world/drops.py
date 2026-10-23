@@ -976,7 +976,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         "received_on": month.received_on,
         "close_period": closed,
         "plants": [plant.name for plant in plants],
-        "rate_card": RATE_CARD,
+        "rate_card": dict(RATE_CARD),
         "hr": drop.hr,
         "payroll": drop.payroll,
         "funding": funding,

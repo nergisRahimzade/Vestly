@@ -228,13 +228,16 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 9: detectors for every case, explained mess, payroll holds, A12 planted | `domain/detectors` |
 | Task 10: scorer (`python -m app.eval.score --period 2026-06 --runs 3`), answer key in scoring format | `eval/scorer` |
 | Task 11: cases (state machine, questions, escalation, resume), posting service, funding with a simulated bank | `controls/cases-and-posting` |
+| Plan: honest results (D17) | `plan/honest-claims` |
+| Task 12: agent tools, loop, Claude and scripted models, claim checker, `run_tests`, `convert_currency` | `agent/tools-and-loop` |
 
-**Next: task 12 `agent/tools-and-loop`** (pull from `plan/honest-claims`; includes the honest-results work of D17), then 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 13 `agent/extraction-and-answers`** (pull from `agent/tools-and-loop`), then 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
 - Run tests: `backend/.venv/Scripts/python.exe -m pytest -q` from `backend/` (or `backend/scripts/test.ps1`). ~100 tests, ~40 s.
-- Postgres guard tests need Docker (`backend/docker-compose.yml`); they skip when it's down.
+- Postgres guard tests need Docker (`backend/docker-compose.yml`); they skip when it's down (it was up on 2026-10-23, and they ran).
+- The agent runs scripted by default (no API key needed). `VESTLY_MODEL_MODE=claude` switches to Claude (`VESTLY_MODEL` overrides the model id; credentials from the environment). The `anthropic` SDK is pinned in `requirements.txt`.
 - Regenerate fixtures after generator changes: `python -c "from app.world.drops import write_fixtures; write_fixtures()"` from `backend/`; a test checks the committed fixtures match.
 - After a schema change, delete the local `backend/vestly.db` (git-ignored) before starting the server.
 - Windows machine. Multi-line bash heredocs with quotes have failed in this harness; write edit scripts to the scratchpad and run them with `python -I`. Drive C: was full on 2026-10-23 (Docker stopped then); the repo is on D:.

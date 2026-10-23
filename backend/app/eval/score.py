@@ -18,8 +18,8 @@ from app.eval.runner import run_close  # noqa: E402
 from app.eval.scorer import TARGETS, load_key, run_as_dict, score  # noqa: E402
 
 
-def score_period(period: str, runs: int = 3, key: dict | None = None) -> tuple[dict, list]:
-    results = [run_close(period) for _ in range(runs)]
+def score_period(period: str, runs: int = 3, key: dict | None = None, model=None) -> tuple[dict, list]:
+    results = [run_close(period, model) for _ in range(runs)]
     return score(key or load_key(), results), results
 
 
