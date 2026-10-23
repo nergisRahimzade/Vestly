@@ -114,8 +114,9 @@ Existing accounts stay. These are added when the task that needs them lands:
 
 ### Materiality
 
-- Per entity, in that entity's currency. Proposed starting values: US 500 USD, UK 400 GBP, DE 450 EUR. Task 2 sets them in the policy file.
-- Under the threshold, and only when the trusted sources agree, Vestly drafts and asks for a normal approval.
+- One threshold: **25.00 USD**, set in the policy file. UK and DE differences are translated to USD at the period's reference rate before comparing. With no reference rate, Vestly escalates rather than guess.
+- At or below the threshold, and only when the trusted sources agree, Vestly drafts and asks for a normal approval. Above it, Vestly escalates with the conflict attached.
+- `app/policy/materiality.py` applies the rule. `tests/test_materiality.py` tests the rule itself; from task 3, the answer-key test checks that the data exercises both sides of the line, so the threshold can be re-checked once the full data exists.
 - It always escalates, at any amount, on: a bank-detail change, a closed-period effect, a missing grant approval, a forfeiture, an unconfirmed person, and a funding mismatch.
 
 ### Source ranking
@@ -289,7 +290,7 @@ Gaps: reconciliation re-runs erase history, the ledger has no draft state, mater
 
 - Reconciliation runs become append-only: a `reconciliation_runs` table (run id, actor, time, input document hashes, policy hash). Findings belong to a run. Reads return the latest run by default, or any run by id.
 - Journal states `draft` → `approved` → `posted`, with `prepared_by`, `approved_by`, `posted_by`. A database check stops `prepared_by = approved_by`. The agent can create drafts only.
-- Per-entity materiality in the policy file.
+- Materiality stays at 25.00 USD. The rule, the currency translation, and the always-escalate list are written in the policy file and applied by one function, with tests at the boundary.
 - Generator: `build_drop(period)` works for any month. Month names, month-end dates, and pay calendars are computed, not hard-coded. Each anomaly is a named "plant" function applied to a clean month, so a held-out month is `build_drop("2026-07", plants=[...])`.
 - Tests: two reconciliation runs both survive; an agent draft can't be approved by the agent; a generated April has valid month-ends; the committed March and June fixtures still match the generator byte for byte.
 

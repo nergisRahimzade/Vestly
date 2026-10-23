@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.identities import Actor
-from app.auth.permissions import JOURNAL_POST, PERIOD_LOCK, PERIOD_OPEN, require
+from app.auth.permissions import JOURNAL_DRAFT, JOURNAL_POST, JOURNAL_REVIEW, PERIOD_LOCK, PERIOD_OPEN, require
 from app.ledger.chart import DEPARTMENTS
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, JournalLine, Period
@@ -125,18 +125,34 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
         return LedgerError("period_locked", f"{period} for {entity_code} is locked.", 409)
     if "unbalanced_journal" in message:
         return LedgerError("unbalanced_journal", "The journal entry does not balance.", 422)
+    if "preparer_is_not_reviewer" in message:
+        return LedgerError("separation_of_duties", "The preparer cannot review their own entry.", 403)
+    if "journal_is_final" in message:
+        return LedgerError("journal_is_final", "This journal can no longer change.", 409)
     return LedgerError("ledger_rejected", "The database rejected the journal entry.", 422)
 
 
-def post_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
-    require(actor, JOURNAL_POST, "post a journal entry")
-    entity = require_entity(session, str(payload["entity_code"]))
-    period = str(payload["period"])
+def _commit(session: Session, entity_code: str, period: str) -> None:
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _translate_integrity(exc, entity_code, period) from exc
+
+
+def _open_period_for(session: Session, entity: Entity, period: str, verb: str) -> Period:
     period_row = find_period(session, entity, period)
     if period_row is None:
-        raise LedgerError("period_not_open", f"Open {entity.code} {period} before posting.", 422)
+        raise LedgerError("period_not_open", f"Open {entity.code} {period} before {verb}.", 422)
     if period_row.status != "open":
         raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409)
+    return period_row
+
+
+def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[JournalEntry, Entity, str]:
+    entity = require_entity(session, str(payload["entity_code"]))
+    period = str(payload["period"])
+    period_row = _open_period_for(session, entity, period, "drafting")
     memo = str(payload["memo"]).strip()
     if not memo:
         raise LedgerError("invalid_memo", "A journal entry needs a memo.", 422)
@@ -152,10 +168,10 @@ def post_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
         period=period_row,
         number=f"JE-{entity.code}-{period}-{int(existing or 0) + 1:04d}",
         memo=memo,
-        status="posted",
+        status="draft",
         currency=entity.currency,
-        posted_by=actor.handle,
-        posted_at=datetime.now(timezone.utc),
+        prepared_by=prepared_by,
+        prepared_at=datetime.now(timezone.utc),
         lines=[
             JournalLine(
                 account=draft.account,
@@ -167,12 +183,71 @@ def post_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
             for index, draft in enumerate(drafts, start=1)
         ],
     )
+    return entry, entity, period
+
+
+def draft_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
+    """Vestly prepares. A draft must already balance and sit in an open month."""
+    require(actor, JOURNAL_DRAFT, "draft a journal entry")
+    entry, entity, period = _build_entry(session, payload, actor.handle)
     session.add(entry)
-    try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
-        raise _translate_integrity(exc, entity.code, period) from exc
+    _commit(session, entity.code, period)
+    return entry
+
+
+def require_entry(session: Session, entry_id: str) -> JournalEntry:
+    entry = session.get(JournalEntry, entry_id)
+    if entry is None:
+        raise LedgerError("unknown_journal", f"Journal {entry_id} does not exist.", 404)
+    return entry
+
+
+def review_entry(session: Session, entry_id: str, actor: Actor, approve: bool, note: str | None) -> JournalEntry:
+    require(actor, JOURNAL_REVIEW, "review a journal entry")
+    entry = require_entry(session, entry_id)
+    if entry.status != "draft":
+        raise LedgerError("journal_is_final", f"{entry.number} is {entry.status}, not a draft.", 409)
+    if entry.prepared_by == actor.handle:
+        raise LedgerError("separation_of_duties", "The preparer cannot review their own entry.", 403)
+    if not approve and not (note or "").strip():
+        raise LedgerError("invalid_note", "A rejection needs a reason.", 422)
+    period = period_label(entry.period)
+    if approve:
+        _open_period_for(session, entry.entity, period, "approving")
+    entry.status = "approved" if approve else "rejected"
+    entry.reviewed_by = actor.handle
+    entry.reviewed_at = datetime.now(timezone.utc)
+    entry.review_note = (note or "").strip() or None
+    _commit(session, entry.entity.code, period)
+    return entry
+
+
+def post_approved(session: Session, entry_id: str, actor: Actor) -> JournalEntry:
+    require(actor, JOURNAL_POST, "post a journal entry")
+    entry = require_entry(session, entry_id)
+    if entry.status != "approved":
+        raise LedgerError("not_approved", f"{entry.number} is {entry.status}. Only an approved entry posts.", 409)
+    period = period_label(entry.period)
+    _open_period_for(session, entry.entity, period, "posting")
+    entry.status = "posted"
+    entry.posted_by = actor.handle
+    entry.posted_at = datetime.now(timezone.utc)
+    _commit(session, entry.entity.code, period)
+    return entry
+
+
+def import_posted_entry(session: Session, payload: dict, actor: Actor, source: str) -> JournalEntry:
+    """Bring in an entry that was already on the books before Vestly, recorded as prepared by its source system."""
+    require(actor, JOURNAL_POST, "import posted history")
+    entry, entity, period = _build_entry(session, payload, source)
+    now = datetime.now(timezone.utc)
+    entry.status = "posted"
+    entry.reviewed_by = actor.handle
+    entry.reviewed_at = now
+    entry.posted_by = actor.handle
+    entry.posted_at = now
+    session.add(entry)
+    _commit(session, entity.code, period)
     return entry
 
 

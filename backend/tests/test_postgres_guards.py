@@ -60,9 +60,11 @@ def _insert_entry(connection, ids, number: str, credit: str) -> None:
         text(
             """
             INSERT INTO journal_entries
-              (id, entity_id, period_id, number, memo, status, currency, posted_by, posted_at)
+              (id, entity_id, period_id, number, memo, status, currency,
+               prepared_by, prepared_at, reviewed_by, reviewed_at, posted_by, posted_at)
             VALUES
-              (:id, :entity_id, :period_id, :number, 'raw sql', 'posted', 'USD', 'controller', :posted_at)
+              (:id, :entity_id, :period_id, :number, 'raw sql', 'posted', 'USD',
+               'vestly', :posted_at, 'dana.ruiz', :posted_at, 'dana.ruiz', :posted_at)
             """
         ),
         {
@@ -125,3 +127,81 @@ def test_postgres_rejects_unbalanced_entries_and_locked_periods(pg_engine):
         with pg_engine.begin() as connection:
             ids = _ids(connection)
             _insert_entry(connection, ids, "JE-PG-LOCKED", "100.00")
+
+
+def test_postgres_keeps_separation_of_duties_and_history(pg_engine):
+    factory = sessionmaker(bind=pg_engine, autoflush=False, expire_on_commit=False)
+    with factory() as session:
+        from app.auth.identities import Actor
+        from app.ledger.service import open_period
+
+        open_period(session, "US", "2026-06", Actor(handle="dana.ruiz", role="controller"))
+
+    with pg_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT e.id AS entity_id, p.id AS period_id, a.id AS expense_id, b.id AS payable_id
+                FROM entities e
+                JOIN periods p ON p.entity_id = e.id AND p.year = 2026 AND p.month = 6
+                JOIN accounts a ON a.code = '5000'
+                JOIN accounts b ON b.code = '2100'
+                WHERE e.code = 'US'
+                """
+            )
+        ).one()
+        connection.execute(
+            text(
+                """
+                INSERT INTO journal_entries
+                  (id, entity_id, period_id, number, memo, status, currency, prepared_by, prepared_at)
+                VALUES
+                  ('pg-draft', :entity_id, :period_id, 'JE-PG-DRAFT', 'raw draft', 'draft', 'USD', 'vestly', now())
+                """
+            ),
+            {"entity_id": row.entity_id, "period_id": row.period_id},
+        )
+        for line_number, account_id, debit, credit in (
+            (1, row.expense_id, "5.00", "0.00"),
+            (2, row.payable_id, "0.00", "5.00"),
+        ):
+            connection.execute(
+                text(
+                    "INSERT INTO journal_lines (id, entry_id, account_id, line_number, debit, credit) "
+                    "VALUES (:id, 'pg-draft', :account_id, :line_number, :debit, :credit)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "account_id": account_id,
+                    "line_number": line_number,
+                    "debit": debit,
+                    "credit": credit,
+                },
+            )
+
+    with pytest.raises(IntegrityError, match="preparer_is_not_reviewer"):
+        with pg_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE journal_entries SET status = 'approved', reviewed_by = prepared_by, "
+                    "reviewed_at = now() WHERE id = 'pg-draft'"
+                )
+            )
+
+    with pytest.raises(IntegrityError, match="journal_is_final"):
+        with pg_engine.begin() as connection:
+            connection.execute(text("UPDATE journal_entries SET memo = 'edited' WHERE number = 'JE-PG-BALANCED'"))
+
+    with pg_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO reconciliation_runs
+                  (id, period, sequence, ran_by, ran_at, policy_version, policy_hash, inputs_hash, input_documents)
+                VALUES ('pg-run', '2026-06', 1, 'vestly', now(), 'v', 'p', 'i', '[]')
+                """
+            )
+        )
+    with pytest.raises(IntegrityError, match="append_only"):
+        with pg_engine.begin() as connection:
+            connection.execute(text("DELETE FROM reconciliation_runs WHERE id = 'pg-run'"))

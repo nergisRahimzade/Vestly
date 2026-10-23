@@ -24,6 +24,14 @@ WAGES = {
 }
 
 
+def approve_and_post(client, entry_id: str) -> dict:
+    approved = client.post(f"/journal-entries/{entry_id}/approve", headers=CONTROLLER)
+    assert approved.status_code == 200, approved.text
+    posted = client.post(f"/journal-entries/{entry_id}/post", headers=CONTROLLER)
+    assert posted.status_code == 200, posted.text
+    return posted.json()
+
+
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -73,17 +81,21 @@ def test_foundation_fixture(client):
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "locked"
         elif action == "post":
-            response = client.post("/journal-entries", headers=CONTROLLER, json=step)
+            response = client.post("/journal-entries", headers=AGENT, json=step)
             expect = step["expect"]
             assert response.status_code == expect["status"], step["name"] + " " + response.text
             body = response.json()
             if "error" in expect:
                 assert body["error"] == expect["error"]
             else:
-                assert body["total_debit"] == expect["total"]
-                assert body["total_credit"] == expect["total"]
-                assert body["currency"] == "USD"
-                assert body["status"] == "posted"
+                assert body["status"] == "draft"
+                assert body["prepared_by"] == "vestly"
+                posted = approve_and_post(client, body["id"])
+                assert posted["total_debit"] == expect["total"]
+                assert posted["total_credit"] == expect["total"]
+                assert posted["currency"] == "USD"
+                assert posted["status"] == "posted"
+                assert posted["reviewed_by"] == "dana.ruiz"
         else:
             raise AssertionError(f"Unknown step {action}")
 
@@ -101,25 +113,28 @@ def test_agent_cannot_post_or_lock(client):
     denied_lock = client.post("/entities/US/periods/2026-03/lock", headers=AGENT)
     assert denied_lock.status_code == 403
     assert denied_lock.json()["error"] == "forbidden"
-    denied_post = client.post("/journal-entries", headers=AGENT, json=WAGES)
-    assert denied_post.status_code == 403
-    assert denied_post.json()["error"] == "forbidden"
+    draft = client.post("/journal-entries", headers=AGENT, json=WAGES)
+    assert draft.status_code == 201
+    for action in ("approve", "post"):
+        denied = client.post(f"/journal-entries/{draft.json()['id']}/{action}", headers=AGENT)
+        assert denied.status_code == 403
+        assert denied.json()["error"] == "forbidden"
     period = client.get("/entities/US/periods/2026-03", headers=CONTROLLER)
     assert period.json()["status"] == "open"
     listed = client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER)
-    assert listed.json() == []
+    assert [entry["status"] for entry in listed.json()] == ["draft"]
 
 
 def test_books_stay_inside_the_entity(client):
     assert client.post("/entities/US/periods/2026-03", headers=CONTROLLER).status_code == 201
     assert client.post("/entities/UK/periods/2026-03", headers=CONTROLLER).status_code == 201
-    us = client.post("/journal-entries", headers=CONTROLLER, json=WAGES)
+    us = client.post("/journal-entries", headers=AGENT, json=WAGES)
     uk_wages = {
         **WAGES,
         "entity_code": "UK",
         "memo": "UK Engineering wages for March 2026",
     }
-    uk = client.post("/journal-entries", headers=CONTROLLER, json=uk_wages)
+    uk = client.post("/journal-entries", headers=AGENT, json=uk_wages)
     assert us.status_code == 201
     assert uk.status_code == 201
     assert us.json()["currency"] == "USD"
@@ -131,7 +146,7 @@ def test_books_stay_inside_the_entity(client):
 
 
 def test_unknown_account_and_unopened_period(client):
-    missing = client.post("/journal-entries", headers=CONTROLLER, json=WAGES)
+    missing = client.post("/journal-entries", headers=AGENT, json=WAGES)
     assert missing.status_code == 422
     assert missing.json()["error"] == "period_not_open"
     assert client.post("/entities/US/periods/2026-03", headers=CONTROLLER).status_code == 201
@@ -142,7 +157,7 @@ def test_unknown_account_and_unopened_period(client):
             {"account_code": "2100", "debit": "0.00", "credit": "10.00"},
         ],
     }
-    rejected = client.post("/journal-entries", headers=CONTROLLER, json=bad_account)
+    rejected = client.post("/journal-entries", headers=AGENT, json=bad_account)
     assert rejected.status_code == 422
     assert rejected.json()["error"] == "unknown_account"
 
@@ -166,9 +181,9 @@ def test_database_rejects_a_locked_period(client):
                 text(
                     """
                     INSERT INTO journal_entries
-                      (id, entity_id, period_id, number, memo, status, currency, posted_by, posted_at)
+                      (id, entity_id, period_id, number, memo, status, currency, prepared_by, prepared_at)
                     VALUES
-                      (:id, :entity_id, :period_id, 'JE-UK-RAW', 'bypass the service', 'posted', 'GBP', 'controller', :posted_at)
+                      (:id, :entity_id, :period_id, 'JE-UK-RAW', 'bypass the service', 'draft', 'GBP', 'vestly', :posted_at)
                     """
                 ),
                 {

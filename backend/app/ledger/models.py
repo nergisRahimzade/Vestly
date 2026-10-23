@@ -51,10 +51,24 @@ class Period(Base):
 
 
 class JournalEntry(Base):
+    """A journal moves through draft, then approved or rejected, then posted.
+
+    The preparer can never be the reviewer. That rule is a database check, not only a service rule.
+    """
+
     __tablename__ = "journal_entries"
     __table_args__ = (
         UniqueConstraint("number", name="journal_number_unique"),
-        CheckConstraint("status IN ('posted')", name="journal_status_known"),
+        CheckConstraint("status IN ('draft', 'approved', 'rejected', 'posted')", name="journal_status_known"),
+        CheckConstraint("reviewed_by IS NULL OR reviewed_by <> prepared_by", name="preparer_is_not_reviewer"),
+        CheckConstraint(
+            "status = 'draft' OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)",
+            name="reviewed_after_draft",
+        ),
+        CheckConstraint(
+            "(status = 'posted') = (posted_by IS NOT NULL AND posted_at IS NOT NULL)",
+            name="posted_has_poster",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -62,10 +76,15 @@ class JournalEntry(Base):
     period_id: Mapped[str] = mapped_column(ForeignKey("periods.id"), nullable=False)
     number: Mapped[str] = mapped_column(String(32), nullable=False)
     memo: Mapped[str] = mapped_column(String(500), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="posted")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    posted_by: Mapped[str] = mapped_column(String(80), nullable=False)
-    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    prepared_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(String(80))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(String(500))
+    posted_by: Mapped[str | None] = mapped_column(String(80))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     entity: Mapped[Entity] = relationship()
     period: Mapped[Period] = relationship()

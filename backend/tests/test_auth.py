@@ -46,11 +46,20 @@ def test_only_the_controller_moves_the_books(client):
     assert client.post("/entities/US/periods/2026-06", headers=AGENT).status_code == 403
     assert client.post("/entities/US/periods/2026-06", headers=CONTROLLER).status_code == 201
     for headers in (AGENT, AUDITOR, PROVIDER, STRANGER):
-        assert client.post("/journal-entries", headers=headers, json=WAGES).status_code == 403
         assert client.post("/entities/US/periods/2026-06/lock", headers=headers).status_code == 403
         assert client.post("/world/load", headers=headers).status_code == 403
-    posted = client.post("/journal-entries", headers=CONTROLLER, json=WAGES)
-    assert posted.status_code == 201
+    # Only Vestly prepares; the controller reviews. Nobody does both.
+    for headers in (CONTROLLER, AUDITOR, PROVIDER, STRANGER):
+        assert client.post("/journal-entries", headers=headers, json=WAGES).status_code == 403
+    draft = client.post("/journal-entries", headers=AGENT, json=WAGES)
+    assert draft.status_code == 201
+    entry_id = draft.json()["id"]
+    for headers in (AGENT, AUDITOR, PROVIDER, STRANGER):
+        assert client.post(f"/journal-entries/{entry_id}/approve", headers=headers).status_code == 403
+        assert client.post(f"/journal-entries/{entry_id}/post", headers=headers).status_code == 403
+    assert client.post(f"/journal-entries/{entry_id}/approve", headers=CONTROLLER).status_code == 200
+    posted = client.post(f"/journal-entries/{entry_id}/post", headers=CONTROLLER)
+    assert posted.status_code == 200
     assert posted.json()["posted_by"] == "dana.ruiz"
 
 

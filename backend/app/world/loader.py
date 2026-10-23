@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
-from app.ledger.service import lock_period, open_period, post_entry
+from app.ledger.service import import_posted_entry, lock_period, open_period
 from app.world.drops import fixture_dir
 from app.world.models import (
     BankLine,
@@ -140,7 +140,7 @@ def _post_history(session: Session, actor: Actor) -> None:
         for entity in ENTITIES:
             open_period(session, entity, period, actor)
         for entry in drop["ledger_entries"]:
-            post_entry(
+            import_posted_entry(
                 session,
                 {
                     "entity_code": entry["entity_code"],
@@ -149,6 +149,7 @@ def _post_history(session: Session, actor: Actor) -> None:
                     "lines": entry["lines"],
                 },
                 actor,
+                source="northlight.prior_ledger",
             )
         if drop["close_period"]:
             for entity in ENTITIES:

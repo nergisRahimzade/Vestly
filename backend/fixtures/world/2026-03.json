@@ -3,6 +3,14 @@
   "description": "Synthetic Northlight file drop. People, account numbers, and amounts are fictional.",
   "received_on": "2026-04-02",
   "close_period": true,
+  "plants": [
+    "paid_past_termination:NL-US-003",
+    "stale_vesting_flag:GR-UK-003",
+    "unapproved_grant:GR-DE-001",
+    "contribution_rate_break:NL-UK-001",
+    "email:Jonah Hale bank change email",
+    "email:Controller rejection of Jonah Hale bank change"
+  ],
   "rate_card": {
     "us_401k_match_rate": "0.04",
     "uk_pension_rate": "0.05",

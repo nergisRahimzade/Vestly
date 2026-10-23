@@ -11,15 +11,17 @@ from app.db import get_db
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, Period
 from app.ledger.money import money_str
-from app.ledger.schemas import AccountOut, EntityOut, JournalIn, JournalOut, LineOut, PeriodOut
+from app.ledger.schemas import AccountOut, EntityOut, JournalIn, JournalOut, LineOut, PeriodOut, ReviewIn
 from app.ledger.service import (
     find_period,
     list_entries,
     lock_period,
+    draft_entry,
     open_period,
     period_label,
-    post_entry,
+    post_approved,
     require_entity,
+    review_entry,
 )
 
 router = APIRouter()
@@ -50,6 +52,9 @@ def journal_out(entry: JournalEntry) -> JournalOut:
         period=period_label(entry.period),
         memo=entry.memo,
         status=entry.status,
+        prepared_by=entry.prepared_by,
+        reviewed_by=entry.reviewed_by,
+        review_note=entry.review_note,
         posted_by=entry.posted_by,
         total_debit=money_str(total_debit),
         total_credit=money_str(total_credit),
@@ -120,8 +125,37 @@ def create_journal_entry(
     db: Session = Depends(get_db),
     who: Actor = Depends(current_actor),
 ) -> JournalOut:
-    entry = post_entry(db, body.model_dump(), who)
-    return journal_out(entry)
+    """Create a draft. Only Vestly drafts; the controller reviews and posts."""
+    return journal_out(draft_entry(db, body.model_dump(), who))
+
+
+@router.post("/journal-entries/{entry_id}/approve", response_model=JournalOut)
+def approve_journal_entry(
+    entry_id: str,
+    body: ReviewIn | None = None,
+    db: Session = Depends(get_db),
+    who: Actor = Depends(current_actor),
+) -> JournalOut:
+    return journal_out(review_entry(db, entry_id, who, approve=True, note=body.note if body else None))
+
+
+@router.post("/journal-entries/{entry_id}/reject", response_model=JournalOut)
+def reject_journal_entry(
+    entry_id: str,
+    body: ReviewIn,
+    db: Session = Depends(get_db),
+    who: Actor = Depends(current_actor),
+) -> JournalOut:
+    return journal_out(review_entry(db, entry_id, who, approve=False, note=body.note))
+
+
+@router.post("/journal-entries/{entry_id}/post", response_model=JournalOut)
+def post_journal_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    who: Actor = Depends(current_actor),
+) -> JournalOut:
+    return journal_out(post_approved(db, entry_id, who))
 
 
 @router.get("/entities/{entity_code}/journal-entries", response_model=list[JournalOut])

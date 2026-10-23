@@ -1,4 +1,10 @@
 from dataclasses import FrozenInstanceError
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from app.db import ENGINE
 from helpers import AGENT, CONTROLLER, STRANGER
 
 
@@ -39,14 +45,14 @@ def test_priya_conflict_and_in_band_fx(client):
 
     march = client.post("/reconciliations?period=2026-03", headers=CONTROLLER)
     assert march.status_code == 200, march.text
-    march_names = {row["subject_name"] for row in march.json()}
+    march_names = {row["subject_name"] for row in march.json()["findings"]}
     assert "Hannah Price" in march_names
     assert "Priya Shah" not in march_names
     assert "Riley Nguyen" not in march_names
 
     june = client.post("/reconciliations?period=2026-06", headers=AGENT)
     assert june.status_code == 200, june.text
-    rows = june.json()
+    rows = june.json()["findings"]
     priya = _named(rows, "Priya Shah")
     assert priya["fact"] == "employment_dates"
     assert priya["disposition"] == "conflict"
@@ -73,7 +79,7 @@ def test_priya_conflict_and_in_band_fx(client):
     assert "Riley Nguyen" not in {row["subject_name"] for row in rows}
 
     again = client.post("/reconciliations?period=2026-06", headers=CONTROLLER)
-    priya_rows = [row for row in again.json() if row["subject_name"] == "Priya Shah"]
+    priya_rows = [row for row in again.json()["findings"] if row["subject_name"] == "Priya Shah"]
     assert len(priya_rows) == 1
 
     hidden = client.get("/reconciliations?period=2026-06", headers=STRANGER)
@@ -84,3 +90,35 @@ def test_reconcile_waits_for_the_file_drops(client):
     response = client.post("/reconciliations?period=2026-06", headers=CONTROLLER)
     assert response.status_code == 409
     assert response.json()["error"] == "world_not_loaded"
+
+
+def test_every_run_is_kept(client):
+    assert client.post("/world/load", headers=CONTROLLER).status_code == 200
+    first = client.post("/reconciliations?period=2026-06", headers=AGENT).json()
+    second = client.post("/reconciliations?period=2026-06", headers=CONTROLLER).json()
+    assert first["run"]["sequence"] == 1
+    assert second["run"]["sequence"] == 2
+    assert first["run"]["ran_by"] == "vestly"
+    assert second["run"]["ran_by"] == "dana.ruiz"
+    assert first["run"]["inputs_hash"] == second["run"]["inputs_hash"]
+    assert first["run"]["policy_hash"] == second["run"]["policy_hash"]
+    assert {doc["period"] for doc in first["run"]["input_documents"]} == {"2026-03", "2026-06"}
+
+    runs = client.get("/reconciliations/runs?period=2026-06", headers=AGENT).json()
+    assert [run["sequence"] for run in runs] == [1, 2]
+    latest = client.get("/reconciliations?period=2026-06", headers=AGENT).json()
+    assert latest["run"]["id"] == second["run"]["id"]
+    earlier = client.get(f"/reconciliations?period=2026-06&run_id={first['run']['id']}", headers=AGENT).json()
+    assert earlier["run"]["id"] == first["run"]["id"]
+    assert {row["subject_name"] for row in earlier["findings"]} == {row["subject_name"] for row in first["findings"]}
+    assert client.get("/reconciliations?period=2026-05", headers=AGENT).status_code == 404
+
+    for statement in (
+        "UPDATE reconciliations SET trusted_value = 'changed'",
+        "DELETE FROM reconciliations",
+        "UPDATE reconciliation_runs SET ran_by = 'someone else'",
+        "DELETE FROM reconciliation_runs",
+    ):
+        with pytest.raises(IntegrityError, match="append_only"):
+            with ENGINE.begin() as connection:
+                connection.execute(text(statement))

@@ -15,6 +15,10 @@ class JournalIn(BaseModel):
     lines: list[LineIn] = Field(min_length=2)
 
 
+class ReviewIn(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
 class LineOut(BaseModel):
     line_number: int
     account_code: str
@@ -32,7 +36,10 @@ class JournalOut(BaseModel):
     period: str
     memo: str
     status: str
-    posted_by: str
+    prepared_by: str
+    reviewed_by: str | None
+    review_note: str | None
+    posted_by: str | None
     total_debit: str
     total_credit: str
     lines: list[LineOut]

@@ -28,6 +28,7 @@ class Policy:
     company: str
     materiality_absolute: Decimal
     materiality_currency: str
+    always_escalate: tuple[str, ...]
     fx_band: Decimal
     min_group_size: int
     contributions: tuple[tuple[str, Decimal], ...]
@@ -65,6 +66,7 @@ def load_policy(path: Path = POLICY_PATH) -> Policy:
         company=document["company"],
         materiality_absolute=Decimal(document["materiality"]["absolute"]),
         materiality_currency=document["materiality"]["currency"],
+        always_escalate=tuple(document["materiality"]["always_escalate"]),
         fx_band=Decimal(document["fx"]["band"]),
         min_group_size=int(document["privacy"]["min_group_size"]),
         contributions=contributions,

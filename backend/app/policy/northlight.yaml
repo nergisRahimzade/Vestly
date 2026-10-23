@@ -1,8 +1,19 @@
 version: northlight-2026-06
 company: Northlight Labs
 materiality:
+  # A difference above this amount goes to a person. At or below it, and only when the
+  # trusted sources agree, Vestly drafts and asks for a routine approval.
+  # UK and DE amounts are translated to USD at the period's reference rate before comparing.
   absolute: "25.00"
   currency: USD
+  # These go to a person at any amount.
+  always_escalate:
+    - bank_detail_change
+    - closed_period_effect
+    - missing_grant_approval
+    - forfeiture
+    - unconfirmed_person
+    - funding_mismatch
 fx:
   band: "0.01"
 privacy:

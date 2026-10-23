@@ -1,20 +1,31 @@
+import hashlib
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth.identities import Actor
 from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.ledger.service import parse_period
 from app.policy.loader import Policy, load_policy
-from app.reconcile.models import Reconciliation
+from app.reconcile.models import Reconciliation, ReconciliationRun
 from app.world.drops import fixture_dir
 from app.world.loader import WORLD_VERSION
-from app.world.models import EquitySnapshot, HrCensusRow, LedgerExportLine, PayrollRegisterRow, WorldLoad
+from app.world.models import (
+    EquitySnapshot,
+    HrCensusRow,
+    LedgerExportLine,
+    PayrollRegisterRow,
+    SourceDocument,
+    WorldLoad,
+)
 
 
-def reconcile_period(session: Session, period: str) -> list[Reconciliation]:
+def reconcile_period(session: Session, period: str, actor: Actor) -> tuple[ReconciliationRun, list[Reconciliation]]:
+    """Run the reconciler and keep the result as a new run. Earlier runs are left as they were."""
     parse_period(period)
     if session.get(WorldLoad, WORLD_VERSION) is None:
         raise LedgerError("world_not_loaded", "Load the company file drops before reconciling.", 409)
@@ -22,11 +33,51 @@ def reconcile_period(session: Session, period: str) -> list[Reconciliation]:
     if not drop_path.exists():
         raise LedgerError("period_not_loaded", f"No file drop is loaded for {period}.", 404)
     policy = load_policy()
+    run = _start_run(session, period, actor, policy)
     findings = _employment_findings(session, period, policy) + [_fx_finding(period, policy)]
-    session.execute(delete(Reconciliation).where(Reconciliation.period == period))
+    for finding in findings:
+        finding.run_id = run.id
     session.add_all(findings)
     session.commit()
-    return findings
+    return run, findings
+
+
+def latest_run(session: Session, period: str) -> ReconciliationRun | None:
+    return session.scalar(
+        select(ReconciliationRun)
+        .where(ReconciliationRun.period == period)
+        .order_by(ReconciliationRun.sequence.desc())
+        .limit(1)
+    )
+
+
+def _start_run(session: Session, period: str, actor: Actor, policy: Policy) -> ReconciliationRun:
+    # The reconciler reads this month and every earlier month, so all of them are its inputs.
+    documents = list(
+        session.scalars(
+            select(SourceDocument).where(SourceDocument.period <= period).order_by(SourceDocument.content_hash)
+        )
+    )
+    inputs = [{"title": row.title, "period": row.period, "content_hash": row.content_hash} for row in documents]
+    inputs_hash = hashlib.sha256(
+        "\n".join(f"{row.period} {row.content_hash}" for row in documents).encode("utf-8")
+    ).hexdigest()
+    previous = session.scalar(
+        select(func.max(ReconciliationRun.sequence)).where(ReconciliationRun.period == period)
+    )
+    run = ReconciliationRun(
+        period=period,
+        sequence=int(previous or 0) + 1,
+        ran_by=actor.handle,
+        ran_at=datetime.now(timezone.utc),
+        policy_version=policy.version,
+        policy_hash=policy.content_hash,
+        inputs_hash=inputs_hash,
+        input_documents=json.dumps(inputs),
+    )
+    session.add(run)
+    session.flush()
+    return run
 
 
 def _employment_findings(session: Session, period: str, policy: Policy) -> list[Reconciliation]:
