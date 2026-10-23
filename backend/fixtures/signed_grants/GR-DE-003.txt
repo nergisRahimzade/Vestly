@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-DE-003
+Employee: Greta Hoffmann (NL-DE-003)
+Home entity: DE G&A
+Grant date: 2025-01-06
+Cliff end: 2026-01-06
+Vest end: 2029-01-06
+Shares: 2400
+Grant-date fair value: 24000.00 EUR
+Service period: 48 months, straight-line.
+Board approved: yes, 2025-01-06

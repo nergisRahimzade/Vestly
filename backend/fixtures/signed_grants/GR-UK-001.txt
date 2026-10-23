@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-UK-001
+Employee: Amira Khan (NL-UK-001)
+Home entity: UK Engineering
+Grant date: 2024-03-01
+Cliff end: 2025-03-01
+Vest end: 2028-03-01
+Shares: 4800
+Grant-date fair value: 48000.00 GBP
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-03-01

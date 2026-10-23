@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-UK-002
+Employee: Owen Blake (NL-UK-002)
+Home entity: UK GTM
+Grant date: 2024-05-01
+Cliff end: 2025-05-01
+Vest end: 2028-05-01
+Shares: 2400
+Grant-date fair value: 24000.00 GBP
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-05-01

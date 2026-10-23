@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-US-005
+Employee: Riley Nguyen (NL-US-005)
+Home entity: US Engineering
+Grant date: 2024-11-01
+Cliff end: 2025-11-01
+Vest end: 2028-11-01
+Shares: 3600
+Grant-date fair value: 36000.00 USD
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-11-01

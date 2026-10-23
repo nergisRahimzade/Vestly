@@ -20,7 +20,7 @@ def test_committed_file_drops_match_the_generator():
 def test_company_file_drops(client):
     loaded = client.post("/world/load", headers=CONTROLLER)
     assert loaded.status_code == 200, loaded.text
-    assert loaded.json() == {"status": "loaded", "people": 12}
+    assert loaded.json() == {"status": "loaded", "people": 15}
 
     summary = client.get("/world/summary")
     assert summary.json()["company"] == "Northlight Labs"
@@ -30,7 +30,7 @@ def test_company_file_drops(client):
     assert departments == {"Engineering", "Product", "GTM", "G&A"}
 
     people = client.get("/world/people", headers=CONTROLLER).json()
-    assert len(people) == 12
+    assert len(people) == 15
     assert _by_name(people, "Sam Ortiz")["listed_in_hr"] is False
     assert all(row["listed_in_hr"] for row in people if row["legal_name"] != "Sam Ortiz")
 
@@ -73,19 +73,42 @@ def test_company_file_drops(client):
     assert hannah_grant["monthly_expense"] == "500.00"
     assert _by_name(june_hr, "Hannah Price")["termination_date"] < hannah_grant["cliff_end"]
     assert lukas_grant["board_approved"] is False
+    nadia_grants = [row for row in june_equity if row["legal_name"] == "Nadia Rossi"]
+    assert {row["grant_number"] for row in nadia_grants} == {"GR-US-006", "GR-US-006-DUP"}
+    jonah_grant = _by_name(june_equity, "Jonah Hale")
+    assert jonah_grant["vest_end"] == "2027-03-01"
+    tomas_hr = _by_name(june_hr, "Tomas Fischer")
+    tomas_pay = _by_name(june_pay, "Tomas Fischer")
+    assert tomas_hr["entity_code"] == "UK"
+    assert tomas_pay["entity_code"] == "DE"
+    ines = _by_name(june_pay, "Ines Duarte")
+    assert ines["pay_period_start"] == "2026-06-02"
+    assert ines["pay_period_end"] == "2026-06-25"
+    assert ines["gross_wages"] == "4800.00"
+    amira_cycle = _by_name(june_pay, "Amira Khan")
+    assert amira_cycle["pay_period_start"] == "2026-05-26"
+    assert amira_cycle["pay_period_end"] == "2026-06-25"
+    greta_rows = [row for row in june_hr if row["legal_name"] == "Greta Hoffmann"]
+    assert len(greta_rows) == 2
 
     funding = client.get("/world/funding?period=2026-06", headers=CONTROLLER).json()
     bank = client.get("/world/bank?period=2026-06", headers=CONTROLLER).json()
+    sofia_bank = next(row for row in bank if row["payment_id"] == "PAY-2026-06-NL-DE-002")
+    assert sofia_bank["posted_on"] == "2026-07-01"
     us_funding = [row for row in funding if row["entity_code"] == "US"]
     us_bank = [row for row in bank if row["entity_code"] == "US"]
-    assert len(us_funding) == 6
+    assert len(us_funding) == 7
     assert len(us_bank) == 4
     missing = {row["payment_id"] for row in us_funding if not row["cleared"]}
-    assert missing == {"PAY-2026-06-NL-US-002", "PAY-2026-06-NL-US-005"}
+    assert missing == {
+        "PAY-2026-06-NL-US-001",
+        "PAY-2026-06-NL-US-002",
+        "PAY-2026-06-NL-US-005",
+    }
     assert {row["payment_id"] for row in us_bank} == {row["payment_id"] for row in us_funding if row["cleared"]}
     maya_payment = next(row for row in us_funding if row["legal_name"] == "Maya Chen")
-    assert maya_payment["destination_account"] == "1002003001"
-    assert maya_payment["cleared"] is True
+    assert maya_payment["destination_account"] == "9911882277"
+    assert maya_payment["cleared"] is False
 
     documents = client.get("/world/documents?period=2026-06", headers=CONTROLLER).json()
     maya_email = next(row for row in documents if row["title"] == "Maya Chen bank change email")

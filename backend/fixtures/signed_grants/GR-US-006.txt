@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-US-006
+Employee: Nadia Rossi (NL-US-006)
+Home entity: US Product
+Grant date: 2024-06-03
+Cliff end: 2025-06-03
+Vest end: 2028-06-03
+Shares: 2400
+Grant-date fair value: 24000.00 USD
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-06-03

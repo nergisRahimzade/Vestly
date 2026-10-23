@@ -1,0 +1,169 @@
+{
+  "version": "2026-06",
+  "company": "Northlight Labs",
+  "true_negatives": [
+    "Riley Nguyen",
+    "Owen Blake",
+    "Sofia Keller",
+    "Greta Hoffmann",
+    "Ines Duarte",
+    "GBPUSD"
+  ],
+  "unlabeled_mess": [
+    {
+      "id": "M01",
+      "name": "ocr_typos_in_bank_change_emails",
+      "period": "2026-06",
+      "note": "Typos in Maya's and Jonah's emails are noise. Email is not a source for a bank change."
+    },
+    {
+      "id": "M02",
+      "name": "duplicate_hr_row",
+      "period": "2026-06",
+      "subjects": ["NL-DE-003"],
+      "note": "Greta Hoffmann appears twice in the June HR file with the same facts. Explain, do not flag."
+    },
+    {
+      "id": "M03",
+      "name": "bank_line_after_month_end",
+      "period": "2026-06",
+      "subjects": ["PAY-2026-06-NL-DE-002"],
+      "note": "Sofia Keller's net pay posted on 1 July. Timing lag, not an unpaid wage."
+    },
+    {
+      "id": "M04",
+      "name": "gbp_usd_inside_band",
+      "period": "2026-06",
+      "note": "Management pack 1.2700 versus reference 1.2750 is inside the 1% band."
+    }
+  ],
+  "anomalies": [
+    {
+      "id": "A01",
+      "name": "bank_detail_diversion",
+      "period": "2026-06",
+      "subjects": ["NL-US-001"],
+      "trusted_source": "hr",
+      "ask": "lee.park",
+      "draft_allowed": false,
+      "expected_amount": null,
+      "note": "No funding to account 9911882277. Cite the March Jonah ruling."
+    },
+    {
+      "id": "A02",
+      "name": "late_termination",
+      "period": "2026-06",
+      "subjects": ["NL-US-003"],
+      "trusted_source": "hr",
+      "ask": "lee.park",
+      "draft_allowed": true,
+      "expected_amount": "1500.00",
+      "expected_currency": "USD",
+      "note": "Overpayment for 13-15 March, drafted in June to account 1200 after HR confirms. Do not reopen March."
+    },
+    {
+      "id": "A03",
+      "name": "forfeiture_still_expensed",
+      "period": "2026-06",
+      "subjects": ["NL-US-003", "NL-UK-003"],
+      "trusted_source": "hr",
+      "ask": "dana.ruiz",
+      "draft_allowed": true,
+      "expected_amount": null,
+      "note": "Reverse Priya's unvested expense and Hannah's pre-cliff grant. Stop going forward."
+    },
+    {
+      "id": "A04",
+      "name": "backdated_raise_into_locked_month",
+      "period": "2026-06",
+      "subjects": ["NL-US-004"],
+      "trusted_source": "approved_compensation",
+      "ask": "dana.ruiz",
+      "draft_allowed": true,
+      "expected_amount": "4000.00",
+      "expected_currency": "USD",
+      "note": "Catch-up in June only after the controller approves. sam.kerr entered the raise and cannot approve the run."
+    },
+    {
+      "id": "A05",
+      "name": "ghost_employee",
+      "period": "2026-06",
+      "subjects": ["PAY-0099"],
+      "trusted_source": "hr",
+      "ask": "lee.park",
+      "draft_allowed": false,
+      "expected_amount": "6400.00",
+      "expected_currency": "USD",
+      "note": "No wage expense. Cash that already left goes to suspense 1210."
+    },
+    {
+      "id": "A06",
+      "name": "unapproved_grant",
+      "period": "2026-06",
+      "subjects": ["NL-DE-001"],
+      "trusted_source": "signed_grant",
+      "ask": "morgan.li",
+      "draft_allowed": false,
+      "expected_amount": "1000.00",
+      "expected_currency": "EUR",
+      "note": "Recognize no expense until board approval arrives."
+    },
+    {
+      "id": "A07",
+      "name": "wrong_employer_contribution",
+      "period": "2026-06",
+      "subjects": ["NL-UK-001"],
+      "trusted_source": "policy_rate",
+      "ask": "payroll.provider",
+      "draft_allowed": true,
+      "expected_amount": "160.00",
+      "expected_currency": "GBP",
+      "note": "Draft UK pension at 5%. The register used 3%. Show the 160.00 difference."
+    },
+    {
+      "id": "A08",
+      "name": "half_cleared_funding_batch",
+      "period": "2026-06",
+      "subjects": ["PAY-2026-06-NL-US-002", "PAY-2026-06-NL-US-005"],
+      "trusted_source": "bank",
+      "ask": "alex.moreau",
+      "draft_allowed": true,
+      "expected_amount": null,
+      "note": "Request Jonah Hale and Riley Nguyen only. Do not re-send Maya's diverted line or anyone already cleared."
+    },
+    {
+      "id": "A09",
+      "name": "vesting_schedule_typo",
+      "period": "2026-06",
+      "subjects": ["NL-US-002"],
+      "trusted_source": "signed_grant",
+      "ask": "morgan.li",
+      "draft_allowed": true,
+      "expected_amount": null,
+      "note": "Expense from the signed vest end 2028-03-01, not the platform date 2027-03-01."
+    },
+    {
+      "id": "A10",
+      "name": "duplicate_grant",
+      "period": "2026-06",
+      "subjects": ["NL-US-006"],
+      "trusted_source": "signed_grant",
+      "ask": "morgan.li",
+      "draft_allowed": true,
+      "expected_amount": "500.00",
+      "expected_currency": "USD",
+      "note": "Expense grant GR-US-006 once. GR-US-006-DUP is the extra platform row."
+    },
+    {
+      "id": "A11",
+      "name": "cross_entity_transfer",
+      "period": "2026-06",
+      "subjects": ["NL-DE-004"],
+      "trusted_source": "hr",
+      "ask": "head.engineering",
+      "draft_allowed": true,
+      "expected_amount": null,
+      "note": "Wages and stock expense follow HR to UK Engineering as of 1 June. Ask the Engineering head and the controller."
+    }
+  ]
+}

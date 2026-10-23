@@ -22,6 +22,7 @@ import calendar
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -85,7 +86,15 @@ PEOPLE: list[dict] = [
         "department": "GTM",
         "hire_date": "2023-06-01",
         "monthly_rate": "10000.00",
-        "raises": [{"effective": "2026-04-01", "monthly_rate": "12000.00", "entered": "2026-06"}],
+        "raises": [
+            {
+                "effective": "2026-04-01",
+                "monthly_rate": "12000.00",
+                "entered": "2026-06",
+                "entered_by": "sam.kerr",
+                "approved_by": "lee.park",
+            }
+        ],
         "bank_account": "1002003004",
         "grant": {"number": "GR-US-004", "date": "2024-03-01", "fair_value": "24000.00"},
     },
@@ -139,7 +148,7 @@ PEOPLE: list[dict] = [
         "hire_date": "2024-03-01",
         "monthly_rate": "9000.00",
         "bank_account": "3002003001",
-        "grant": {"number": "GR-DE-001", "date": "2024-03-01", "fair_value": "48000.00"},
+        "grant": {"number": "GR-DE-001", "date": "2024-03-01", "fair_value": "48000.00", "board_approved": False},
     },
     {
         "employee_number": "NL-DE-002",
@@ -160,6 +169,43 @@ PEOPLE: list[dict] = [
         "monthly_rate": "7500.00",
         "bank_account": "3002003003",
         "grant": {"number": "GR-DE-003", "date": "2025-01-06", "fair_value": "24000.00"},
+    },
+    {
+        "employee_number": "NL-US-006",
+        "legal_name": "Nadia Rossi",
+        "entity_code": "US",
+        "department": "Product",
+        "hire_date": "2024-06-03",
+        "monthly_rate": "11000.00",
+        "bank_account": "1002003006",
+        "grant": {"number": "GR-US-006", "date": "2024-06-03", "fair_value": "24000.00"},
+    },
+    {
+        "employee_number": "NL-DE-004",
+        "legal_name": "Tomas Fischer",
+        "entity_code": "DE",
+        "department": "Engineering",
+        "hire_date": "2024-01-08",
+        "monthly_rate": "8500.00",
+        "bank_account": "3002003004",
+        "transfers": [
+            {
+                "effective": "2026-06-01",
+                "entity_code": "UK",
+                "department": "Engineering",
+                "bank_account": "2002003004",
+            }
+        ],
+        "grant": {"number": "GR-DE-004", "date": "2024-03-01", "fair_value": "24000.00"},
+    },
+    {
+        "employee_number": "NL-UK-004",
+        "legal_name": "Ines Duarte",
+        "entity_code": "UK",
+        "department": "Product",
+        "hire_date": "2026-06-02",
+        "monthly_rate": "6200.00",
+        "bank_account": "2002003005",
     },
 ]
 
@@ -252,6 +298,48 @@ def on_payroll(person: dict, month: Month) -> bool:
     return in_hr(person, month) and hr_view(person, month)[0] == "active"
 
 
+def assignment(person: dict, month: Month) -> tuple[str, str, str, str]:
+    """Entity, department, bank, and currency as of this month, after any transfer HR has recorded."""
+    entity = person["entity_code"]
+    department = person["department"]
+    bank = person["bank_account"]
+    for move in person.get("transfers", []):
+        if move["effective"] <= month.end:
+            entity = move["entity_code"]
+            department = move.get("department", department)
+            bank = move.get("bank_account", bank)
+    return entity, department, bank, CURRENCIES[entity]
+
+
+def person_by_number(employee_number: str) -> dict:
+    for person in PEOPLE:
+        if person["employee_number"] == employee_number:
+            return person
+    raise KeyError(employee_number)
+
+
+def inclusive_days(start: str, end: str) -> int:
+    return (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+
+
+def uk_cycle(month: Month) -> tuple[str, str]:
+    """UK pay runs from the 26th of the previous month to the 25th of this month."""
+    previous = add_months(month.start, -1)
+    return f"{previous[:7]}-26", f"{month.period}-25"
+
+
+def pay_window(person: dict, month: Month) -> tuple[str, str, str, str]:
+    entity, _, _, _ = assignment(person, month)
+    if entity == "UK":
+        full_start, full_end = uk_cycle(month)
+    else:
+        full_start, full_end = month.start, month.end
+    start, end = full_start, full_end
+    if person["hire_date"] > start:
+        start = person["hire_date"]
+    return start, end, full_start, full_end
+
+
 def _known_raises(person: dict, month: Month) -> list[dict]:
     return [
         item
@@ -302,37 +390,48 @@ def set_gross(row: dict, gross: Decimal, contribution_rate: Decimal | None = Non
 
 def hr_row(person: dict, month: Month) -> dict:
     status, terminated_on, recorded_on = hr_view(person, month)
+    entity, department, bank, currency = assignment(person, month)
     return {
         "employee_number": person["employee_number"],
         "legal_name": person["legal_name"],
-        "entity_code": person["entity_code"],
-        "department": person["department"],
+        "entity_code": entity,
+        "department": department,
         "status": status,
         "hire_date": person["hire_date"],
         "termination_date": terminated_on,
         "termination_recorded_on": recorded_on,
         "annual_salary": money(monthly_rate(person, month) * 12),
-        "currency": CURRENCIES[person["entity_code"]],
-        "bank_account": person["bank_account"],
+        "currency": currency,
+        "bank_account": bank,
         "bank_routing": "111000025",
     }
 
 
+def cycle_gross(person: dict, month: Month) -> Decimal:
+    start, end, full_start, full_end = pay_window(person, month)
+    rate = monthly_rate(person, month)
+    if (start, end) != (full_start, full_end):
+        return (rate * inclusive_days(start, end) / inclusive_days(full_start, full_end)).quantize(CENT)
+    return rate
+
+
 def payroll_row(person: dict, month: Month) -> dict:
     retro_effective, retro_gross = retro_pay(person, month)
+    entity, department, bank, currency = assignment(person, month)
+    start, end, _, _ = pay_window(person, month)
     row = {
         "employee_number": person["employee_number"],
         "legal_name": person["legal_name"],
-        "entity_code": person["entity_code"],
-        "department": person["department"],
-        "pay_period_start": month.start,
-        "pay_period_end": month.end,
-        "currency": CURRENCIES[person["entity_code"]],
-        "destination_account": person["bank_account"],
+        "entity_code": entity,
+        "department": department,
+        "pay_period_start": start,
+        "pay_period_end": end,
+        "currency": currency,
+        "destination_account": bank,
         "retro_effective_date": retro_effective,
         "retro_gross": money(retro_gross) if retro_gross is not None else None,
     }
-    set_gross(row, monthly_rate(person, month) + (retro_gross or Decimal("0")))
+    set_gross(row, cycle_gross(person, month) + (retro_gross or Decimal("0")))
     return {
         key: row[key]
         for key in (
@@ -368,6 +467,7 @@ def equity_row(person: dict, month: Month) -> dict:
     grant = person["grant"]
     fair_value = Decimal(grant["fair_value"])
     vest_end = add_months(grant["date"], VEST_MONTHS)
+    entity, department, _, currency = assignment(person, month)
     if hr_view(person, month)[0] == "terminated":
         status, expense = "forfeited", Decimal("0")
     elif vest_end <= month.start:
@@ -378,14 +478,14 @@ def equity_row(person: dict, month: Month) -> dict:
         "grant_number": grant["number"],
         "employee_number": person["employee_number"],
         "legal_name": person["legal_name"],
-        "entity_code": person["entity_code"],
-        "department": person["department"],
+        "entity_code": entity,
+        "department": department,
         "grant_date": grant["date"],
         "cliff_end": add_months(grant["date"], 12),
         "vest_end": vest_end,
         "shares": int(fair_value / Decimal(10)),
         "fair_value": money(fair_value),
-        "currency": CURRENCIES[person["entity_code"]],
+        "currency": currency,
         "board_approved": True,
         "board_approval_date": grant["date"],
         "platform_status": status,
@@ -406,6 +506,7 @@ class Drop:
     equity: list[dict]
     documents: list[dict]
     funding: list[dict] = field(default_factory=list)
+    bank: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -497,6 +598,76 @@ def uncleared_funding(*payment_ids: str) -> Plant:
     return Plant(f"uncleared_funding:{','.join(payment_ids)}", "funding", apply)
 
 
+def diverted_funding(employee_number: str, account: str) -> Plant:
+    """The provider sent net pay to an account from an email, and the bank has not cleared it."""
+
+    def apply(drop: Drop) -> None:
+        for row in drop.funding:
+            if row["employee_number"] == employee_number:
+                row["destination_account"] = account
+                row["cleared"] = False
+
+    return Plant(f"diverted_funding:{employee_number}", "funding", apply)
+
+
+def vesting_typo(grant_number: str, vest_end: str) -> Plant:
+    """The equity platform has the wrong vest end date. The signed grant is right."""
+
+    def apply(drop: Drop) -> None:
+        _one(drop.equity, "grant_number", grant_number)["vest_end"] = vest_end
+
+    return Plant(f"vesting_typo:{grant_number}", "sources", apply)
+
+
+def duplicate_grant(grant_number: str, alias: str) -> Plant:
+    """The same grant appears twice on the equity platform."""
+
+    def apply(drop: Drop) -> None:
+        copy = dict(_one(drop.equity, "grant_number", grant_number))
+        copy["grant_number"] = alias
+        drop.equity.append(copy)
+
+    return Plant(f"duplicate_grant:{grant_number}", "sources", apply)
+
+
+def stale_home_entity(employee_number: str) -> Plant:
+    """Payroll and equity still sit in the old entity after HR recorded a transfer."""
+
+    def apply(drop: Drop) -> None:
+        person = person_by_number(employee_number)
+        home = person["entity_code"]
+        for row in (drop.payroll, drop.equity):
+            item = _one(row, "employee_number", employee_number)
+            item["entity_code"] = home
+            item["department"] = person["department"]
+            item["currency"] = CURRENCIES[home]
+        pay = _one(drop.payroll, "employee_number", employee_number)
+        pay["pay_period_start"] = drop.month.start
+        pay["pay_period_end"] = drop.month.end
+        pay["destination_account"] = person["bank_account"]
+        set_gross(pay, Decimal(person["monthly_rate"]))
+
+    return Plant(f"stale_home_entity:{employee_number}", "sources", apply)
+
+
+def duplicate_hr_row(employee_number: str) -> Plant:
+    """A harmless extra copy of an HR row. Same person, same facts."""
+
+    def apply(drop: Drop) -> None:
+        drop.hr.append(dict(_one(drop.hr, "employee_number", employee_number)))
+
+    return Plant(f"duplicate_hr_row:{employee_number}", "sources", apply)
+
+
+def late_bank_posting(payment_id: str, posted_on: str) -> Plant:
+    """A bank line that posted one day after month-end. Mess, not an unpaid wage."""
+
+    def apply(drop: Drop) -> None:
+        _one(drop.bank, "payment_id", payment_id)["posted_on"] = posted_on
+
+    return Plant(f"late_bank_posting:{payment_id}", "bank", apply)
+
+
 JONAH_EMAIL = email(
     "Jonah Hale bank change email",
     [
@@ -556,6 +727,7 @@ DEFAULT_PLANTS: dict[str, list[Plant]] = {
         stale_vesting_flag("GR-UK-003"),
         unapproved_grant("GR-DE-001"),
         contribution_rate_break("NL-UK-001", "0.03"),
+        vesting_typo("GR-US-002", "2027-03-01"),
         JONAH_EMAIL,
         JONAH_REJECTION,
     ],
@@ -564,8 +736,14 @@ DEFAULT_PLANTS: dict[str, list[Plant]] = {
         unapproved_grant("GR-DE-001"),
         contribution_rate_break("NL-UK-001", "0.03"),
         ghost_on_register(SAM_ORTIZ),
+        vesting_typo("GR-US-002", "2027-03-01"),
+        duplicate_grant("GR-US-006", "GR-US-006-DUP"),
+        stale_home_entity("NL-DE-004"),
+        duplicate_hr_row("NL-DE-003"),
         MAYA_EMAIL,
+        diverted_funding("NL-US-001", "9911882277"),
         uncleared_funding("PAY-2026-06-NL-US-002", "PAY-2026-06-NL-US-005"),
+        late_bank_posting("PAY-2026-06-NL-DE-002", "2026-07-01"),
     ],
 }
 
@@ -728,7 +906,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         plants = DEFAULT_PLANTS.get(period, [])
     if closed is None:
         closed = MONTHS.get(period, {}).get("closed", False)
-    unknown = [plant.stage for plant in plants if plant.stage not in ("sources", "funding")]
+    unknown = [plant.stage for plant in plants if plant.stage not in ("sources", "funding", "bank")]
     if unknown:
         raise ValueError(f"Unknown plant stage {unknown[0]!r}")
 
@@ -749,7 +927,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
 
     funding = [_instruction(row) for row in drop.funding]
     cleared = [row for row in funding if row["cleared"]]
-    bank = [
+    drop.bank = [
         {
             "entity_code": row["entity_code"],
             "posted_on": month.end,
@@ -761,6 +939,9 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         }
         for row in cleared
     ]
+    for plant in plants:
+        if plant.stage == "bank":
+            plant.apply(drop)
     ledger_entries = []
     for entity in ENTITIES:
         entries = []
@@ -781,7 +962,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         "payroll": drop.payroll,
         "funding": funding,
         "equity": drop.equity,
-        "bank": bank,
+        "bank": drop.bank,
         "documents": drop.documents,
         "ledger_entries": ledger_entries,
     }
@@ -795,12 +976,76 @@ def fixture_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "fixtures" / "world"
 
 
+def grants_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "fixtures" / "signed_grants"
+
+
+def actions_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "fixtures" / "comp_actions"
+
+
+def signed_grant_text(person: dict) -> str:
+    grant = person["grant"]
+    approved = grant.get("board_approved", True)
+    lines = [
+        f"Northlight Labs signed grant {grant['number']}",
+        f"Employee: {person['legal_name']} ({person['employee_number']})",
+        f"Home entity: {person['entity_code']} {person['department']}",
+        f"Grant date: {grant['date']}",
+        f"Cliff end: {add_months(grant['date'], 12)}",
+        f"Vest end: {add_months(grant['date'], VEST_MONTHS)}",
+        f"Shares: {int(Decimal(grant['fair_value']) / Decimal(10))}",
+        f"Grant-date fair value: {grant['fair_value']} {CURRENCIES[person['entity_code']]}",
+        f"Service period: {VEST_MONTHS} months, straight-line.",
+        f"Board approved: {'yes, ' + grant['date'] if approved else 'no'}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_signed_grants() -> None:
+    directory = grants_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    for person in PEOPLE:
+        if "grant" not in person:
+            continue
+        path = directory / f"{person['grant']['number']}.txt"
+        path.write_text(signed_grant_text(person), encoding="utf-8", newline="\n")
+
+
+def write_comp_actions() -> None:
+    directory = actions_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    actions = []
+    for person in PEOPLE:
+        for item in person.get("raises", []):
+            actions.append(
+                {
+                    "action_id": f"COMP-{person['employee_number']}-{item['effective']}",
+                    "employee_number": person["employee_number"],
+                    "legal_name": person["legal_name"],
+                    "kind": "salary_change",
+                    "effective": item["effective"],
+                    "entered": item["entered"],
+                    "entered_by": item["entered_by"],
+                    "approved_by": item["approved_by"],
+                    "previous_monthly_rate": person["monthly_rate"],
+                    "monthly_rate": item["monthly_rate"],
+                    "currency": CURRENCIES[person["entity_code"]],
+                }
+            )
+    path = directory / "2026.json"
+    path.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
 def write_fixtures() -> None:
     directory = fixture_dir()
     directory.mkdir(parents=True, exist_ok=True)
     for period in MONTHS:
         path = directory / f"{period}.json"
         path.write_text(canonical(build_drop(period)), encoding="utf-8", newline="\n")
+    write_signed_grants()
+    write_comp_actions()
 
 
 if __name__ == "__main__":

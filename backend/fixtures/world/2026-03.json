@@ -8,6 +8,7 @@
     "stale_vesting_flag:GR-UK-003",
     "unapproved_grant:GR-DE-001",
     "contribution_rate_break:NL-UK-001",
+    "vesting_typo:GR-US-002",
     "email:Jonah Hale bank change email",
     "email:Controller rejection of Jonah Hale bank change"
   ],
@@ -173,6 +174,34 @@
       "currency": "EUR",
       "bank_account": "3002003003",
       "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "status": "active",
+      "hire_date": "2024-06-03",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "132000.00",
+      "currency": "USD",
+      "bank_account": "1002003006",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2024-01-08",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "102000.00",
+      "currency": "EUR",
+      "bank_account": "3002003004",
+      "bank_routing": "111000025"
     }
   ],
   "payroll": [
@@ -266,8 +295,8 @@
       "legal_name": "Amira Khan",
       "entity_code": "UK",
       "department": "Engineering",
-      "pay_period_start": "2026-03-01",
-      "pay_period_end": "2026-03-31",
+      "pay_period_start": "2026-02-26",
+      "pay_period_end": "2026-03-25",
       "gross_wages": "8000.00",
       "employee_withholdings": "1600.00",
       "net_pay": "6400.00",
@@ -283,8 +312,8 @@
       "legal_name": "Owen Blake",
       "entity_code": "UK",
       "department": "GTM",
-      "pay_period_start": "2026-03-01",
-      "pay_period_end": "2026-03-31",
+      "pay_period_start": "2026-02-26",
+      "pay_period_end": "2026-03-25",
       "gross_wages": "7000.00",
       "employee_withholdings": "1400.00",
       "net_pay": "5600.00",
@@ -343,6 +372,40 @@
       "employer_contribution": "1500.00",
       "currency": "EUR",
       "destination_account": "3002003003",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "pay_period_start": "2026-03-01",
+      "pay_period_end": "2026-03-31",
+      "gross_wages": "11000.00",
+      "employee_withholdings": "2200.00",
+      "net_pay": "8800.00",
+      "employer_tax": "880.00",
+      "employer_contribution": "440.00",
+      "currency": "USD",
+      "destination_account": "1002003006",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "pay_period_start": "2026-03-01",
+      "pay_period_end": "2026-03-31",
+      "gross_wages": "8500.00",
+      "employee_withholdings": "2125.00",
+      "net_pay": "6375.00",
+      "employer_tax": "0.00",
+      "employer_contribution": "1700.00",
+      "currency": "EUR",
+      "destination_account": "3002003004",
       "retro_effective_date": null,
       "retro_gross": null
     }
@@ -457,6 +520,28 @@
       "destination_account": "3002003003",
       "kind": "net_pay",
       "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-03-NL-US-006",
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "amount": "8800.00",
+      "currency": "USD",
+      "destination_account": "1002003006",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-03-NL-DE-004",
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "amount": "6375.00",
+      "currency": "EUR",
+      "destination_account": "3002003004",
+      "kind": "net_pay",
+      "cleared": true
     }
   ],
   "equity": [
@@ -485,7 +570,7 @@
       "department": "Engineering",
       "grant_date": "2024-03-01",
       "cliff_end": "2025-03-01",
-      "vest_end": "2028-03-01",
+      "vest_end": "2027-03-01",
       "shares": 2400,
       "fair_value": "24000.00",
       "currency": "USD",
@@ -646,6 +731,40 @@
       "board_approval_date": "2025-01-06",
       "platform_status": "vesting",
       "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-US-006",
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "grant_date": "2024-06-03",
+      "cliff_end": "2025-06-03",
+      "vest_end": "2028-06-03",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-06-03",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-DE-004",
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "EUR",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
     }
   ],
   "bank": [
@@ -738,6 +857,24 @@
       "payment_id": "PAY-2026-03-NL-DE-003",
       "description": "Net pay Greta Hoffmann PAY-2026-03-NL-DE-003",
       "destination_account": "3002003003"
+    },
+    {
+      "entity_code": "US",
+      "posted_on": "2026-03-31",
+      "amount": "8800.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-03-NL-US-006",
+      "description": "Net pay Nadia Rossi PAY-2026-03-NL-US-006",
+      "destination_account": "1002003006"
+    },
+    {
+      "entity_code": "DE",
+      "posted_on": "2026-03-31",
+      "amount": "6375.00",
+      "currency": "EUR",
+      "payment_id": "PAY-2026-03-NL-DE-004",
+      "description": "Net pay Tomas Fischer PAY-2026-03-NL-DE-004",
+      "destination_account": "3002003004"
     }
   ],
   "documents": [
@@ -778,7 +915,7 @@
         {
           "account_code": "5000",
           "department": "Product",
-          "debit": "7500.00",
+          "debit": "18500.00",
           "credit": "0.00"
         },
         {
@@ -796,7 +933,7 @@
         {
           "account_code": "5100",
           "department": "Product",
-          "debit": "600.00",
+          "debit": "1480.00",
           "credit": "0.00"
         },
         {
@@ -814,32 +951,32 @@
         {
           "account_code": "5110",
           "department": "Product",
-          "debit": "300.00",
+          "debit": "740.00",
           "credit": "0.00"
         },
         {
           "account_code": "2100",
           "department": null,
           "debit": "0.00",
-          "credit": "43600.00"
+          "credit": "52400.00"
         },
         {
           "account_code": "2200",
           "department": null,
           "debit": "0.00",
-          "credit": "10900.00"
+          "credit": "13100.00"
         },
         {
           "account_code": "2210",
           "department": null,
           "debit": "0.00",
-          "credit": "4360.00"
+          "credit": "5240.00"
         },
         {
           "account_code": "2220",
           "department": null,
           "debit": "0.00",
-          "credit": "2180.00"
+          "credit": "2620.00"
         }
       ]
     },
@@ -851,14 +988,14 @@
         {
           "account_code": "2100",
           "department": null,
-          "debit": "43600.00",
+          "debit": "52400.00",
           "credit": "0.00"
         },
         {
           "account_code": "1000",
           "department": null,
           "debit": "0.00",
-          "credit": "43600.00"
+          "credit": "52400.00"
         }
       ]
     },
@@ -882,14 +1019,14 @@
         {
           "account_code": "5200",
           "department": "Product",
-          "debit": "1000.00",
+          "debit": "1500.00",
           "credit": "0.00"
         },
         {
           "account_code": "3000",
           "department": null,
           "debit": "0.00",
-          "credit": "3750.00"
+          "credit": "4250.00"
         }
       ]
     },
@@ -1018,7 +1155,7 @@
         {
           "account_code": "5000",
           "department": "Engineering",
-          "debit": "9000.00",
+          "debit": "17500.00",
           "credit": "0.00"
         },
         {
@@ -1036,7 +1173,7 @@
         {
           "account_code": "5110",
           "department": "Engineering",
-          "debit": "1800.00",
+          "debit": "3500.00",
           "credit": "0.00"
         },
         {
@@ -1055,19 +1192,19 @@
           "account_code": "2100",
           "department": null,
           "debit": "0.00",
-          "credit": "18375.00"
+          "credit": "24750.00"
         },
         {
           "account_code": "2200",
           "department": null,
           "debit": "0.00",
-          "credit": "6125.00"
+          "credit": "8250.00"
         },
         {
           "account_code": "2220",
           "department": null,
           "debit": "0.00",
-          "credit": "4900.00"
+          "credit": "6600.00"
         }
       ]
     },
@@ -1079,14 +1216,14 @@
         {
           "account_code": "2100",
           "department": null,
-          "debit": "18375.00",
+          "debit": "24750.00",
           "credit": "0.00"
         },
         {
           "account_code": "1000",
           "department": null,
           "debit": "0.00",
-          "credit": "18375.00"
+          "credit": "24750.00"
         }
       ]
     },
@@ -1098,7 +1235,7 @@
         {
           "account_code": "5200",
           "department": "Engineering",
-          "debit": "1000.00",
+          "debit": "1500.00",
           "credit": "0.00"
         },
         {
@@ -1117,7 +1254,7 @@
           "account_code": "3000",
           "department": null,
           "debit": "0.00",
-          "credit": "2000.00"
+          "credit": "2500.00"
         }
       ]
     }

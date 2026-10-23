@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.identities import Actor
 from app.ledger.service import import_posted_entry, lock_period, open_period
 from app.world.drops import fixture_dir
+from app.world.evidence import load_static_evidence
 from app.world.models import (
     BankLine,
     EquitySnapshot,
@@ -32,6 +33,7 @@ def load_world(session: Session, actor: Actor) -> dict:
     for period in ("2026-03", "2026-06"):
         drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
         _store_drop(session, drop)
+    load_static_evidence(session)
     session.commit()
     _derive_people(session)
     session.commit()

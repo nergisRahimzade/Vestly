@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-US-003
+Employee: Priya Shah (NL-US-003)
+Home entity: US Product
+Grant date: 2024-03-01
+Cliff end: 2025-03-01
+Vest end: 2028-03-01
+Shares: 4800
+Grant-date fair value: 48000.00 USD
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-03-01

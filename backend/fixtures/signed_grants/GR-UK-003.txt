@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-UK-003
+Employee: Hannah Price (NL-UK-003)
+Home entity: UK G&A
+Grant date: 2025-08-01
+Cliff end: 2026-08-01
+Vest end: 2029-08-01
+Shares: 2400
+Grant-date fair value: 24000.00 GBP
+Service period: 48 months, straight-line.
+Board approved: yes, 2025-08-01

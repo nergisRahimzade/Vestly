@@ -1,0 +1,15 @@
+[
+  {
+    "action_id": "COMP-NL-US-004-2026-04-01",
+    "employee_number": "NL-US-004",
+    "legal_name": "Evan Brooks",
+    "kind": "salary_change",
+    "effective": "2026-04-01",
+    "entered": "2026-06",
+    "entered_by": "sam.kerr",
+    "approved_by": "lee.park",
+    "previous_monthly_rate": "10000.00",
+    "monthly_rate": "12000.00",
+    "currency": "USD"
+  }
+]

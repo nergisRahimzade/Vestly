@@ -1,0 +1,10 @@
+Northlight Labs signed grant GR-US-002
+Employee: Jonah Hale (NL-US-002)
+Home entity: US Engineering
+Grant date: 2024-03-01
+Cliff end: 2025-03-01
+Vest end: 2028-03-01
+Shares: 2400
+Grant-date fair value: 24000.00 USD
+Service period: 48 months, straight-line.
+Board approved: yes, 2024-03-01

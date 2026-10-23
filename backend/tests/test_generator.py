@@ -62,6 +62,12 @@ def test_a_clean_month_has_no_anomalies():
     assert all(_balanced(entry) for entry in april["ledger_entries"])
     # Evan's April raise is not keyed until June, so April still pays the old rate.
     assert _by_name(april["payroll"], "Evan Brooks")["gross_wages"] == "10000.00"
+    assert "Ines Duarte" not in {row["legal_name"] for row in april["hr"]}
+    amira = _by_name(april["payroll"], "Amira Khan")
+    assert amira["pay_period_start"] == "2026-03-26"
+    assert amira["pay_period_end"] == "2026-04-25"
+    tomas = _by_name(april["hr"], "Tomas Fischer")
+    assert tomas["entity_code"] == "DE"
 
 
 def test_a_closed_month_books_payroll_bank_and_equity():
@@ -98,3 +104,10 @@ def test_the_shipped_months_name_their_plants():
 def test_an_unknown_plant_stage_is_refused():
     with pytest.raises(ValueError):
         build_drop("2026-04", plants=[Plant("broken", "ledger", lambda drop: None)])
+
+
+def test_ines_first_uk_cycle_is_partial():
+    ines = _by_name(build_drop("2026-06")["payroll"], "Ines Duarte")
+    assert ines["pay_period_start"] == "2026-06-02"
+    assert ines["gross_wages"] == "4800.00"
+    assert Decimal(ines["employer_contribution"]) == Decimal("240.00")
