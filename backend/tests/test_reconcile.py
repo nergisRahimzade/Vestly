@@ -1,8 +1,6 @@
 from dataclasses import FrozenInstanceError
+from helpers import AGENT, CONTROLLER, STRANGER
 
-CONTROLLER = {"X-Role": "controller", "X-Actor": "controller"}
-AGENT = {"X-Role": "vestly_agent", "X-Actor": "vestly"}
-STRANGER = {"X-Role": "payroll_provider", "X-Actor": "provider"}
 
 
 def _named(rows: list[dict], name: str) -> dict:

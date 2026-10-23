@@ -23,5 +23,3 @@ ACCOUNTS: tuple[tuple[str, str, str, str], ...] = (
 )
 
 DEPARTMENTS: tuple[str, ...] = ("Engineering", "Product", "GTM", "G&A")
-
-CONTROLLER_ROLE = "controller"

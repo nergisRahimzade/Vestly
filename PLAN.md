@@ -276,9 +276,9 @@ The 12 people below already exist in the fixtures. Task 3 adds three more so the
 
 Gaps: the role comes from a header anyone can set, and the agent can read every salary and bank account.
 
-- Add an `identities` table and token auth. Seed the identities in section 2. Remove `X-Role`; keep `X-Actor` only as a display name, if at all.
-- Move authorization to a single `require(identity, permission)` check backed by a permission table per role.
-- Give the agent aggregate views: `/world/payroll/totals`, `/world/hr/headcount`. Return individual rows only for people with an open case. Until cases exist (task 8), nobody has one, so the agent gets totals only.
+- Add an `identities` table and token auth. Seed the identities in section 2. Remove `X-Role` and `X-Actor`.
+- Move authorization to a single `require(identity, permission)` check. The permission map per role lives in code, so no route can grant a permission.
+- Give the agent aggregate views: `/world/payroll/totals`, `/world/hr/headcount`, and totals for equity, funding, and bank. A group covering fewer people than the policy's `min_group_size` shows headcount only. Return individual rows only for people with an open case. Until cases exist (task 8), nobody has one, so the agent gets totals only.
 - Log every individual-pay read to a temporary `access_log` table. The audit chain absorbs it in task 10.
 - Pin exact versions in `requirements.txt`. Add a `Makefile` or `scripts/test.ps1` that always uses `.venv`.
 - Tests: a forged role is rejected; `vestly` gets 403 on post, lock, and individual pay; `stranger` gets 401 or 403 everywhere; the controller still posts.

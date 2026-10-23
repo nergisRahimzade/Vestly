@@ -29,6 +29,7 @@ class Policy:
     materiality_absolute: Decimal
     materiality_currency: str
     fx_band: Decimal
+    min_group_size: int
     contributions: tuple[tuple[str, Decimal], ...]
     facts: tuple[FactPolicy, ...]
     content_hash: str
@@ -65,6 +66,7 @@ def load_policy(path: Path = POLICY_PATH) -> Policy:
         materiality_absolute=Decimal(document["materiality"]["absolute"]),
         materiality_currency=document["materiality"]["currency"],
         fx_band=Decimal(document["fx"]["band"]),
+        min_group_size=int(document["privacy"]["min_group_size"]),
         contributions=contributions,
         facts=facts,
         content_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),

@@ -5,6 +5,9 @@ materiality:
   currency: USD
 fx:
   band: "0.01"
+privacy:
+  # A department total covering fewer people than this shows headcount only.
+  min_group_size: 3
 contributions:
   US: "0.04"
   UK: "0.05"

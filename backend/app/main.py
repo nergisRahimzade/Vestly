@@ -15,10 +15,11 @@ from app.world.routes import router as world_router
 async def lifespan(_app: FastAPI):
     init_db()
     if os.environ.get("VESTLY_SKIP_WORLD") != "1":
+        from app.auth.identities import CONTROLLER_HANDLE, Actor
         from app.world.loader import load_world
 
         with SessionLocal() as session:
-            load_world(session)
+            load_world(session, Actor(handle=CONTROLLER_HANDLE, role="controller"))
     yield
 
 

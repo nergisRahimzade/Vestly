@@ -3,10 +3,8 @@ import json
 from decimal import Decimal
 
 from app.world.drops import build_drop, canonical, fixture_dir
+from helpers import AGENT, CONTROLLER, STRANGER
 
-CONTROLLER = {"X-Role": "controller", "X-Actor": "controller"}
-AGENT = {"X-Role": "vestly_agent", "X-Actor": "vestly"}
-STRANGER = {"X-Role": "payroll_provider", "X-Actor": "provider"}
 
 
 def _by_name(rows: list[dict], name: str) -> dict:
@@ -105,29 +103,29 @@ def test_company_file_drops(client):
     rejection = next(row for row in march_docs if row["title"] == "Controller rejection of Jonah Hale bank change")
     assert "An email is not a bank-detail change." in rejection["body"]
 
-    assert client.get("/entities/US/periods/2026-03").json()["status"] == "locked"
-    assert client.get("/entities/UK/periods/2026-03").json()["status"] == "locked"
-    assert client.get("/entities/DE/periods/2026-03").json()["status"] == "locked"
-    assert client.get("/entities/US/periods/2026-06").json()["status"] == "open"
+    assert client.get("/entities/US/periods/2026-03", headers=CONTROLLER).json()["status"] == "locked"
+    assert client.get("/entities/UK/periods/2026-03", headers=CONTROLLER).json()["status"] == "locked"
+    assert client.get("/entities/DE/periods/2026-03", headers=CONTROLLER).json()["status"] == "locked"
+    assert client.get("/entities/US/periods/2026-06", headers=CONTROLLER).json()["status"] == "open"
 
-    june_books = client.get("/entities/US/journal-entries?period=2026-06").json()
+    june_books = client.get("/entities/US/journal-entries?period=2026-06", headers=CONTROLLER).json()
     assert june_books
     assert all("stock compensation" in entry["memo"] for entry in june_books)
-    march_books = client.get("/entities/US/journal-entries?period=2026-03").json()
+    march_books = client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER).json()
     assert len(march_books) == 3
     assert all(entry["total_debit"] == entry["total_credit"] for entry in march_books + june_books)
 
     again = client.post("/world/load", headers=CONTROLLER)
     assert again.json()["status"] == "already_loaded"
-    assert len(client.get("/entities/US/journal-entries?period=2026-03").json()) == 3
+    assert len(client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER).json()) == 3
 
 
-def test_agent_can_read_sources_but_cannot_load_them(client):
+def test_agent_reads_totals_but_cannot_load_the_world(client):
     denied = client.post("/world/load", headers=AGENT)
     assert denied.status_code == 403
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
     hidden = client.get("/world/payroll?period=2026-06", headers=STRANGER)
     assert hidden.status_code == 403
-    visible = client.get("/world/payroll?period=2026-06", headers=AGENT)
-    assert visible.status_code == 200
-    assert visible.json()
+    totals = client.get("/world/payroll/totals?period=2026-06", headers=AGENT)
+    assert totals.status_code == 200
+    assert totals.json()

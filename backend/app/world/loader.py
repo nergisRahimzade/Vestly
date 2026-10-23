@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.ledger.service import Actor, lock_period, open_period, post_entry
+from app.auth.identities import Actor
+from app.ledger.service import lock_period, open_period, post_entry
 from app.world.drops import fixture_dir
 from app.world.models import (
     BankLine,
@@ -20,12 +21,12 @@ from app.world.models import (
 )
 
 WORLD_VERSION = "2026-06"
-CONTROLLER = Actor("controller", "controller")
 ENTITIES = ("US", "UK", "DE")
 CURRENCY = {"US": "USD", "UK": "GBP", "DE": "EUR"}
 
 
-def load_world(session: Session) -> dict:
+def load_world(session: Session, actor: Actor) -> dict:
+    """Load the file drops and post the books as they stood. The actor must be allowed to post and lock."""
     if session.get(WorldLoad, WORLD_VERSION) is not None:
         return {"status": "already_loaded", "people": _people_count(session)}
     for period in ("2026-03", "2026-06"):
@@ -34,7 +35,7 @@ def load_world(session: Session) -> dict:
     session.commit()
     _derive_people(session)
     session.commit()
-    _post_history(session)
+    _post_history(session, actor)
     session.add(WorldLoad(version=WORLD_VERSION, loaded_at=datetime.now(timezone.utc)))
     session.commit()
     return {"status": "loaded", "people": _people_count(session)}
@@ -133,11 +134,11 @@ def _derive_people(session: Session) -> None:
         )
 
 
-def _post_history(session: Session) -> None:
+def _post_history(session: Session, actor: Actor) -> None:
     for period in ("2026-03", "2026-06"):
         drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
         for entity in ENTITIES:
-            open_period(session, entity, period, CONTROLLER)
+            open_period(session, entity, period, actor)
         for entry in drop["ledger_entries"]:
             post_entry(
                 session,
@@ -147,8 +148,8 @@ def _post_history(session: Session) -> None:
                     "memo": entry["memo"],
                     "lines": entry["lines"],
                 },
-                CONTROLLER,
+                actor,
             )
         if drop["close_period"]:
             for entity in ENTITIES:
-                lock_period(session, entity, period, CONTROLLER)
+                lock_period(session, entity, period, actor)

@@ -4,22 +4,25 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.deps import current_actor
+from app.auth.identities import Actor
+from app.auth.permissions import RECONCILE_READ, RECONCILE_RUN, require
 from app.db import get_db
-from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
-from app.ledger.routes import actor
-from app.ledger.service import Actor
 from app.policy.loader import load_policy
 from app.reconcile.engine import reconcile_period
 from app.reconcile.models import Reconciliation
 
 router = APIRouter()
-READ_ROLES = {"controller", "vestly_agent"}
 
 
-def reader(who: Actor = Depends(actor)) -> Actor:
-    if who.role not in READ_ROLES:
-        raise LedgerError("forbidden", "Reconciliations are visible to the controller and to Vestly.", 403)
+def runner(who: Actor = Depends(current_actor)) -> Actor:
+    require(who, RECONCILE_RUN, "run a reconciliation")
+    return who
+
+
+def reader(who: Actor = Depends(current_actor)) -> Actor:
+    require(who, RECONCILE_READ, "read reconciliations")
     return who
 
 
@@ -66,7 +69,7 @@ def policy() -> dict:
 def run_reconciliation(
     period: str,
     db: Session = Depends(get_db),
-    _who: Actor = Depends(reader),
+    _who: Actor = Depends(runner),
 ) -> list[dict]:
     return [_finding(row) for row in reconcile_period(db, period)]
 

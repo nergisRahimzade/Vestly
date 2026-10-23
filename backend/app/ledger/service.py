@@ -6,16 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.ledger.chart import CONTROLLER_ROLE, DEPARTMENTS
+from app.auth.identities import Actor
+from app.auth.permissions import JOURNAL_POST, PERIOD_LOCK, PERIOD_OPEN, require
+from app.ledger.chart import DEPARTMENTS
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, JournalLine, Period
 from app.ledger.money import parse_money
-
-
-@dataclass(frozen=True)
-class Actor:
-    role: str
-    actor_id: str
 
 
 @dataclass(frozen=True)
@@ -24,11 +20,6 @@ class LineDraft:
     debit: Decimal
     credit: Decimal
     department: str | None
-
-
-def require_controller(actor: Actor, action: str) -> None:
-    if actor.role != CONTROLLER_ROLE:
-        raise LedgerError("forbidden", f"Only the controller can {action}.", 403)
 
 
 def parse_period(period: str) -> tuple[int, int]:
@@ -62,7 +53,7 @@ def find_period(session: Session, entity: Entity, period: str) -> Period | None:
 
 
 def open_period(session: Session, entity_code: str, period: str, actor: Actor) -> tuple[Period, bool]:
-    require_controller(actor, "open a period")
+    require(actor, PERIOD_OPEN, "open a period")
     entity = require_entity(session, entity_code)
     existing = find_period(session, entity, period)
     if existing is not None:
@@ -77,7 +68,7 @@ def open_period(session: Session, entity_code: str, period: str, actor: Actor) -
 
 
 def lock_period(session: Session, entity_code: str, period: str, actor: Actor) -> Period:
-    require_controller(actor, "lock a period")
+    require(actor, PERIOD_LOCK, "lock a period")
     entity = require_entity(session, entity_code)
     row = find_period(session, entity, period)
     if row is None:
@@ -85,7 +76,7 @@ def lock_period(session: Session, entity_code: str, period: str, actor: Actor) -
     if row.status == "locked":
         return row
     row.status = "locked"
-    row.locked_by = actor.actor_id
+    row.locked_by = actor.handle
     row.locked_at = datetime.now(timezone.utc)
     session.commit()
     return row
@@ -138,7 +129,7 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
 
 
 def post_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
-    require_controller(actor, "post a journal entry")
+    require(actor, JOURNAL_POST, "post a journal entry")
     entity = require_entity(session, str(payload["entity_code"]))
     period = str(payload["period"])
     period_row = find_period(session, entity, period)
@@ -163,7 +154,7 @@ def post_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
         memo=memo,
         status="posted",
         currency=entity.currency,
-        posted_by=actor.actor_id,
+        posted_by=actor.handle,
         posted_at=datetime.now(timezone.utc),
         lines=[
             JournalLine(

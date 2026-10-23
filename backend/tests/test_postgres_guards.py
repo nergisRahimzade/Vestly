@@ -101,9 +101,10 @@ def _insert_entry(connection, ids, number: str, credit: str) -> None:
 def test_postgres_rejects_unbalanced_entries_and_locked_periods(pg_engine):
     factory = sessionmaker(bind=pg_engine, autoflush=False, expire_on_commit=False)
     with factory() as session:
-        from app.ledger.service import Actor, open_period
+        from app.auth.identities import Actor
+        from app.ledger.service import open_period
 
-        open_period(session, "US", "2026-03", Actor("controller", "controller"))
+        open_period(session, "US", "2026-03", Actor(handle="dana.ruiz", role="controller"))
 
     with pg_engine.begin() as connection:
         ids = _ids(connection)
@@ -115,9 +116,10 @@ def test_postgres_rejects_unbalanced_entries_and_locked_periods(pg_engine):
             _insert_entry(connection, ids, "JE-PG-UNBALANCED", "90.00")
 
     with factory() as session:
-        from app.ledger.service import Actor, lock_period
+        from app.auth.identities import Actor
+        from app.ledger.service import lock_period
 
-        lock_period(session, "US", "2026-03", Actor("controller", "controller"))
+        lock_period(session, "US", "2026-03", Actor(handle="dana.ruiz", role="controller"))
 
     with pytest.raises(IntegrityError, match="period_locked"):
         with pg_engine.begin() as connection:

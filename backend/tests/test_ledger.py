@@ -8,9 +8,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.db import ENGINE
+from helpers import AGENT, CONTROLLER
 
-CONTROLLER = {"X-Role": "controller", "X-Actor": "controller"}
-AGENT = {"X-Role": "vestly_agent", "X-Actor": "vestly"}
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "ledger_cases.json"
 
@@ -88,7 +87,7 @@ def test_foundation_fixture(client):
         else:
             raise AssertionError(f"Unknown step {action}")
 
-    listed = client.get(f"/entities/{spec['entity']}/journal-entries?period={spec['period']}")
+    listed = client.get(f"/entities/{spec['entity']}/journal-entries?period={spec['period']}", headers=CONTROLLER)
     assert listed.status_code == 200
     entries = listed.json()
     assert len(entries) == spec["expected_posted_entries"]
@@ -105,9 +104,9 @@ def test_agent_cannot_post_or_lock(client):
     denied_post = client.post("/journal-entries", headers=AGENT, json=WAGES)
     assert denied_post.status_code == 403
     assert denied_post.json()["error"] == "forbidden"
-    period = client.get("/entities/US/periods/2026-03")
+    period = client.get("/entities/US/periods/2026-03", headers=CONTROLLER)
     assert period.json()["status"] == "open"
-    listed = client.get("/entities/US/journal-entries?period=2026-03")
+    listed = client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER)
     assert listed.json() == []
 
 
@@ -125,8 +124,8 @@ def test_books_stay_inside_the_entity(client):
     assert uk.status_code == 201
     assert us.json()["currency"] == "USD"
     assert uk.json()["currency"] == "GBP"
-    us_books = client.get("/entities/US/journal-entries?period=2026-03").json()
-    uk_books = client.get("/entities/UK/journal-entries?period=2026-03").json()
+    us_books = client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER).json()
+    uk_books = client.get("/entities/UK/journal-entries?period=2026-03", headers=CONTROLLER).json()
     assert [entry["number"] for entry in us_books] == ["JE-US-2026-03-0001"]
     assert [entry["number"] for entry in uk_books] == ["JE-UK-2026-03-0001"]
 

@@ -1,17 +1,18 @@
 from decimal import Decimal
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.deps import current_actor
+from app.auth.identities import Actor
+from app.auth.permissions import LEDGER_READ, require
 from app.db import get_db
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, Period
 from app.ledger.money import money_str
 from app.ledger.schemas import AccountOut, EntityOut, JournalIn, JournalOut, LineOut, PeriodOut
 from app.ledger.service import (
-    Actor,
     find_period,
     list_entries,
     lock_period,
@@ -24,13 +25,9 @@ from app.ledger.service import (
 router = APIRouter()
 
 
-def actor(
-    x_role: Annotated[str | None, Header()] = None,
-    x_actor: Annotated[str | None, Header()] = None,
-) -> Actor:
-    if not x_role or not x_actor:
-        raise LedgerError("unauthenticated", "X-Role and X-Actor are required.", 401)
-    return Actor(role=x_role, actor_id=x_actor)
+def ledger_reader(who: Actor = Depends(current_actor)) -> Actor:
+    require(who, LEDGER_READ, "read the books")
+    return who
 
 
 def period_out(row: Period) -> PeriodOut:
@@ -86,7 +83,7 @@ def open_entity_period(
     period: str,
     response: Response,
     db: Session = Depends(get_db),
-    who: Actor = Depends(actor),
+    who: Actor = Depends(current_actor),
 ) -> PeriodOut:
     row, created = open_period(db, entity_code, period, who)
     response.status_code = 201 if created else 200
@@ -98,13 +95,18 @@ def lock_entity_period(
     entity_code: str,
     period: str,
     db: Session = Depends(get_db),
-    who: Actor = Depends(actor),
+    who: Actor = Depends(current_actor),
 ) -> PeriodOut:
     return period_out(lock_period(db, entity_code, period, who))
 
 
 @router.get("/entities/{entity_code}/periods/{period}", response_model=PeriodOut)
-def get_entity_period(entity_code: str, period: str, db: Session = Depends(get_db)) -> PeriodOut:
+def get_entity_period(
+    entity_code: str,
+    period: str,
+    db: Session = Depends(get_db),
+    _who: Actor = Depends(ledger_reader),
+) -> PeriodOut:
     entity = require_entity(db, entity_code)
     row = find_period(db, entity, period)
     if row is None:
@@ -116,12 +118,17 @@ def get_entity_period(entity_code: str, period: str, db: Session = Depends(get_d
 def create_journal_entry(
     body: JournalIn,
     db: Session = Depends(get_db),
-    who: Actor = Depends(actor),
+    who: Actor = Depends(current_actor),
 ) -> JournalOut:
     entry = post_entry(db, body.model_dump(), who)
     return journal_out(entry)
 
 
 @router.get("/entities/{entity_code}/journal-entries", response_model=list[JournalOut])
-def entity_journal_entries(entity_code: str, period: str, db: Session = Depends(get_db)) -> list[JournalOut]:
+def entity_journal_entries(
+    entity_code: str,
+    period: str,
+    db: Session = Depends(get_db),
+    _who: Actor = Depends(ledger_reader),
+) -> list[JournalOut]:
     return [journal_out(entry) for entry in list_entries(db, entity_code, period)]

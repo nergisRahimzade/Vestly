@@ -47,6 +47,7 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db(engine=None) -> None:
     engine = engine or ENGINE
+    from app.auth import models as auth_models  # noqa: F401
     from app.ledger import models  # noqa: F401
     from app.world import models as world_models  # noqa: F401
     from app.reconcile import models as reconcile_models  # noqa: F401
