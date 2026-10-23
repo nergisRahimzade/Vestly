@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.db import ENGINE, Base, init_db
 from app.ledger import models  # noqa: F401
+from app.reconcile import models as reconcile_models  # noqa: F401
 from app.world import models as world_models  # noqa: F401
 from app.main import app
 

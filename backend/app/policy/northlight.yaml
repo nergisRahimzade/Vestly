@@ -1,0 +1,82 @@
+version: northlight-2026-06
+company: Northlight Labs
+materiality:
+  absolute: "25.00"
+  currency: USD
+fx:
+  band: "0.01"
+contributions:
+  US: "0.04"
+  UK: "0.05"
+  DE: "0.20"
+facts:
+  employment_dates:
+    authority: hr
+    ranking:
+      - source: hr
+        reason: HR is the system of record for employment status and dates.
+      - source: payroll
+        reason: The payroll register shows what was paid, not when employment ended.
+      - source: equity
+        reason: The equity platform is a process system. Its vesting flag is checked, not trusted.
+      - source: ledger
+        reason: The ledger shows what was booked. It does not settle a conflict with HR.
+  authorized_compensation:
+    authority: approved_compensation
+    ranking:
+      - source: approved_compensation
+        reason: An approved compensation action is the authority for what pay was authorized.
+      - source: payroll
+        reason: The register shows what was paid, not what was approved.
+  cash_moved:
+    authority: bank
+    ranking:
+      - source: bank
+        reason: The bank is the authority for cash that moved.
+      - source: payroll
+        reason: The register is the payment instruction, not proof the cash left.
+  withholdings_on_a_completed_run:
+    authority: payroll
+    ranking:
+      - source: payroll
+        reason: On a completed run, the register is the authority for amounts withheld and employer taxes.
+      - source: ledger
+        reason: The ledger shows what was booked.
+  grant_terms:
+    authority: signed_grant
+    ranking:
+      - source: signed_grant
+        reason: The signed grant and the board approval are the authority for grant terms.
+      - source: equity
+        reason: The equity platform is a process system.
+  shares_outstanding:
+    authority: grant_terms_and_hr
+    ranking:
+      - source: hr
+        reason: HR supplies the termination date that stops unvested shares.
+      - source: signed_grant
+        reason: The grant terms say what was awarded and how it vests.
+      - source: equity
+        reason: The platform vesting flag is checked, not trusted on its own.
+  books:
+    authority: ledger
+    ranking:
+      - source: ledger
+        reason: The ledger is the record of what was booked. It is not the authority for HR or cash.
+  pay_destination:
+    authority: hr
+    email_is_source: false
+    ranking:
+      - source: hr
+        reason: The HR bank master is the authority for where net pay is sent, after dual approval.
+      - source: email
+        reason: Email is not a source for a bank-detail change.
+  gbp_usd_translation:
+    authority: reference_rate
+    ranking:
+      - source: reference_rate
+        reason: The reference rate is what the band is measured from.
+      - source: management_pack
+        reason: The management pack shows the rate that was used. Inside the band, the difference is explained.
+      - source: ledger
+        reason: Entity books stay in their own currency. A translation difference does not rewrite them.
