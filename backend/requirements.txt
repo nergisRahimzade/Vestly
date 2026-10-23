@@ -10,3 +10,9 @@ psycopg[binary]==3.3.6
 pytest==9.1.1
 httpx==0.28.1
 anthropic==2.2.0
+# PDFs: registers and emails rendered as PDFs (reportlab) and read back (pypdf); pillow and
+# charset-normalizer come with reportlab.
+reportlab==5.1.0
+pypdf==6.21.2
+pillow==13.0.0
+charset-normalizer==3.5.2

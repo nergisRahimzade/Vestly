@@ -25,7 +25,7 @@ def score_period(period: str, runs: int = 3, key: dict | None = None, model=None
     for number in range(1, runs + 1):
         with doing("running a scored close", period=period, run=number):
             results.append(run_close(period, model, world))
-    return score(key or load_key(world=world or os.environ.get("VESTLY_WORLD", "company")), results), results
+    return score(key or load_key(world=world or os.environ.get("VESTLY_WORLD", "company"), period=period), results), results
 
 
 def render(report: dict) -> str:

@@ -385,13 +385,17 @@ def extract_document(ctx, args: DocumentInput) -> ToolResult:
     document = _cited_document(ctx, args.content_hash)
     from app.agent.model import ModelCallError
 
+    from app.world.pdf import decode, is_pdf, pdf_text
+
+    # A PDF is read as the text a parser gets from its pages; every value is then checked against that text.
+    text = pdf_text(decode(document.body)) if is_pdf(document.body) else document.body
     try:
-        extraction = reader().extract(document.title, document.body)
+        extraction = reader().extract(document.title, text)
     except ExtractionRefused as exc:
         return ToolResult.failed(f"extraction_declined: {exc}")
     except ModelCallError as exc:
         return ToolResult.failed(f"extraction_failed: {exc}")
-    problems = extraction_problems(document.body, extraction)
+    problems = extraction_problems(text, extraction)
     if problems:
         return ToolResult.refused(None, "Extraction refused; it states what the document does not: " + " ".join(problems))
     return ToolResult.ok(

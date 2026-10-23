@@ -16,8 +16,19 @@ from app.ledger.errors import LedgerError
 from app.ledger.service import import_posted_entry, lock_period, open_period, parse_period
 from app.record.evidence import document_basis, record
 from app.record.precedents import seed_march_ruling
-from app.world.drops import COMPANY_CLOCK_START, MONTHS, build_company_drop, company_periods, fixture_dir
+from app.world.drops import (
+    COMPANY_CLOCK_START,
+    HELD_OUT,
+    MONTHS,
+    SCENARIO_KINDS,
+    build_company_drop,
+    company_people,
+    company_periods,
+    fixture_dir,
+    scenario_plants,
+)
 from app.world.evidence import load_static_evidence
+from app.world.pdf import decode, is_pdf, pdf_text
 from app.world.models import (
     BankLine,
     DropLoad,
@@ -50,32 +61,58 @@ def selected_world() -> str:
     return world
 
 
-def load_world(session: Session, actor: Actor, world: str | None = None) -> dict:
+def load_world(session: Session, actor: Actor, world: str | None = None, scenarios: list[dict] | None = None) -> dict:
     """Load a world's months, oldest first. The actor must be allowed to post and lock.
 
     The first load in a process is done month by month; a later load into a fresh database restores
-    that result, which is the same database a full load would produce.
+    that result, which is the same database a full load would produce. Scenarios (a planted error of a
+    kind, on a person, in a month) go into that month's drop; a world with scenarios is never snapshotted.
     """
     require(actor, WORLD_LOAD, "load the world")
     world = world or selected_world()
     if world not in WORLDS:
         raise LedgerError("unknown_world", f"No world named {world!r}.", 422)
+    scenarios = [dict(item) for item in scenarios or []]
+    _check_scenarios(world, scenarios)
     existing = session.scalar(select(WorldLoad).limit(1))
     if existing is not None:
         return {"status": "already_loaded", "world": existing.version.split(":")[0], "people": _people_count(session)}
     fresh = _is_fresh(session)
-    if fresh and world in _SNAPSHOTS and _restore(session, world):
+    if not scenarios and fresh and world in _SNAPSHOTS and _restore(session, world):
         return {"status": "loaded", "world": world, "people": _people_count(session), "restored": True}
     if world == "company":
-        result = _load_company(session, actor)
+        result = _load_company(session, actor, scenarios)
     else:
-        result = _load_cast(session, actor)
-    if fresh:
+        result = _load_cast(session, actor, scenarios)
+    if fresh and not scenarios:
         _snapshot(session, world)
-    return result
+    return {**result, "scenarios": scenarios}
 
 
-def _load_cast(session: Session, actor: Actor) -> dict:
+def _check_scenarios(world: str, scenarios: list[dict]) -> None:
+    """Every scenario names a known kind, a month of that world, and a person the plant can apply to."""
+    from app.world.drops import COMPANY_FIRST, COMPANY_LAST, PEOPLE, SCENARIO_KINDS
+
+    people = company_people() if world == "company" else PEOPLE
+    first, last = (COMPANY_FIRST, COMPANY_LAST) if world == "company" else (min(MONTHS), max(MONTHS))
+    for item in scenarios:
+        if set(item) != {"kind", "employee_number", "period"}:
+            raise LedgerError("invalid_scenario", "A scenario is {kind, employee_number, period}.", 422)
+        if item["kind"] not in SCENARIO_KINDS:
+            raise LedgerError("invalid_scenario", f"Unknown scenario kind {item['kind']!r}; choose one of {', '.join(SCENARIO_KINDS)}.", 422)
+        if not first <= item["period"] <= last:
+            raise LedgerError("invalid_scenario", f"The {world} world runs from {first} to {last}; {item['period']} is outside it.", 422)
+        try:
+            scenario_plants(item["kind"], item["employee_number"], item["period"], people)
+        except ValueError as exc:
+            raise LedgerError("invalid_scenario", str(exc), 422) from exc
+
+
+def _plants_for(scenarios: list[dict], period: str, people: list[dict]) -> list:
+    return [plant for item in scenarios if item["period"] == period for plant in scenario_plants(item["kind"], item["employee_number"], period, people)]
+
+
+def _load_cast(session: Session, actor: Actor, scenarios: list[dict] | None = None) -> dict:
     static = load_static_evidence(session, "cast")
     session.flush()
     record(
@@ -88,16 +125,20 @@ def _load_cast(session: Session, actor: Actor) -> dict:
         basis=[document_basis(row.content_hash, row.title) for row in static],
     )
     session.commit()
+    from app.world.drops import DEFAULT_PLANTS, PEOPLE, build_drop
+
     for period in sorted(MONTHS):
         with doing("loading the shipped world", period=period):
-            load_drop(session, read_drop_file(period), actor)
+            extra = _plants_for(scenarios or [], period, PEOPLE)
+            drop = build_drop(period, DEFAULT_PLANTS.get(period, []) + extra) if extra else read_drop_file(period)
+            load_drop(session, drop, actor)
     seed_march_ruling(session, actor)
-    session.add(WorldLoad(version=f"cast:{WORLD_VERSION}", loaded_at=datetime.now(timezone.utc)))
+    session.add(WorldLoad(version=f"cast:{WORLD_VERSION}", loaded_at=datetime.now(timezone.utc), scenarios=json.dumps(scenarios or [])))
     session.commit()
     return {"status": "loaded", "world": "cast", "people": _people_count(session)}
 
 
-def _load_company(session: Session, actor: Actor) -> dict:
+def _load_company(session: Session, actor: Actor, scenarios: list[dict] | None = None) -> dict:
     """The whole company: 58 monthly drops built from the generator, then the clock set to October's close day."""
     from app.controls.models import SimClock
 
@@ -114,16 +155,17 @@ def _load_company(session: Session, actor: Actor) -> dict:
         basis=[document_basis(row.content_hash, row.title) for row in static[:50]],
     )
     session.commit()
+    people = company_people()
     for period in company_periods():
         with doing("loading the company world", period=period):
-            load_drop(session, build_company_drop(period), actor)
+            load_drop(session, build_company_drop(period, _plants_for(scenarios or [], period, people)), actor)
     seed_march_ruling(session, actor)
     clock = session.get(SimClock, 1)
     if clock is None:
         session.add(SimClock(id=1, today=COMPANY_CLOCK_START))
     else:
         clock.today = COMPANY_CLOCK_START
-    session.add(WorldLoad(version=f"company:{COMPANY_VERSION}", loaded_at=datetime.now(timezone.utc)))
+    session.add(WorldLoad(version=f"company:{COMPANY_VERSION}", loaded_at=datetime.now(timezone.utc), scenarios=json.dumps(scenarios or [])))
     session.commit()
     return {"status": "loaded", "world": "company", "people": _people_count(session)}
 
@@ -254,6 +296,38 @@ def rate_card_for(session: Session, period: str) -> dict | None:
     return card
 
 
+def receive_month(session: Session, period: str, actor: Actor) -> dict:
+    """A held-out month arrives (D27): only in the company world, only after the month before it, and only once
+    the simulated clock has reached the day its drop comes. Its rates are whatever exists by then."""
+    from app.controls.clock import today
+    from app.periods import add_months, month_of
+
+    require(actor, WORLD_LOAD, "receive a month")
+    if period not in HELD_OUT:
+        raise LedgerError("not_held_out", f"{period} is not a held-out month; those are {', '.join(HELD_OUT)}.", 422)
+    world = session.scalar(select(WorldLoad).limit(1))
+    if world is None or not world.version.startswith("company:"):
+        raise LedgerError("wrong_world", "Held-out months belong to the company world.", 409)
+    before = add_months(f"{period}-01", -1)[:7]
+    if session.get(DropLoad, before) is None:
+        raise LedgerError("month_out_of_order", f"{period} arrives after {before}, which has not arrived.", 409)
+    arrives = month_of(period).received_on
+    if today(session) < arrives:
+        raise LedgerError("not_arrived", f"The {period} drop arrives on {arrives}; the clock says {today(session)}.", 409)
+    with doing("receiving a held-out month", period=period):
+        return load_drop(session, build_company_drop(period, _scenarios_for(session, period)), actor)
+
+
+def _scenarios_for(session: Session, period: str) -> list:
+    """Scenarios recorded for this world at load time apply to their month's drop, wherever it arrives."""
+    world = session.scalar(select(WorldLoad).limit(1))
+    plants = []
+    for item in json.loads(world.scenarios or "[]") if world is not None else []:
+        if item["period"] == period:
+            plants += scenario_plants(item["kind"], item["employee_number"], period, company_people())
+    return plants
+
+
 def _people_count(session: Session) -> int:
     return int(session.scalar(select(func.count()).select_from(Person)) or 0)
 
@@ -294,6 +368,15 @@ def store_drop(session: Session, drop: dict) -> list[SourceDocument]:
     }
     for extra in drop.get("documents", []):
         documents[extra["title"]] = _document(extra["system"], period, extra["title"], extra["body"], received_on)
+        if is_pdf(extra["body"]):
+            # The PDF is the source; the text a parser reads from it is stored beside it, naming the PDF's hash.
+            original = documents.pop(extra["title"])
+            original.system = "pdf"
+            documents[f"pdf:{extra['title']}"] = original
+            with doing("reading the text of a PDF", title=extra["title"], period=period):
+                text = pdf_text(decode(extra["body"]))
+            title = f"{extra['title']} · text read from PDF sha256:{original.content_hash}"
+            documents[title] = _document(extra["system"], period, title, text, received_on)
     session.add_all(documents.values())
     session.flush()
     hr = documents["hr"]

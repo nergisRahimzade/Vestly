@@ -268,6 +268,17 @@ def _days(start: str, end: str) -> int:
 # ---------------------------------------------------------------- A01 bank-detail change by email
 
 
+def _scan_basis(ctx: Context, document: SourceDocument) -> list[dict]:
+    """A text read from a scanned PDF cites the scan too, so the decision traces to the document that arrived."""
+    from app.world.pdf import source_pdf_hash
+
+    scan_hash = source_pdf_hash(document.title)
+    if scan_hash is None:
+        return []
+    scan = ctx.session.scalar(select(SourceDocument).where(SourceDocument.content_hash == scan_hash))
+    return [] if scan is None else [document_basis(scan.content_hash, scan.title)]
+
+
 def bank_detail_change(ctx: Context) -> list[Finding]:
     findings = []
     by_login = {row.legal_name.lower().replace(" ", "."): row for row in ctx.hr.values()}
@@ -325,7 +336,9 @@ def bank_detail_change(ctx: Context) -> list[Finding]:
                 amount=sum((row.amount for row in paid), ZERO) or None,
                 currency=CURRENCY[person.entity_code],
                 draft_allowed=verdict.allowed,
-                basis=[document_basis(email.content_hash, email.title, quote), rule_basis("BNK-1")]
+                basis=[document_basis(email.content_hash, email.title, quote)]
+                + _scan_basis(ctx, email)
+                + [rule_basis("BNK-1")]
                 + [precedent_basis(row.id, row.decided_by, row.decided_on) for row in precedents],
                 details={
                     "requested_account": account,

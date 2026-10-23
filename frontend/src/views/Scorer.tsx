@@ -6,8 +6,9 @@ function percent(rate: number | undefined) {
 }
 
 export function Scorer() {
-  const [world, setWorld] = useState("company");
-  const scored = useApi<any>(`/eval/report?world=${world}`);
+  const [choice, setChoice] = useState("company");
+  const [world, period] = choice.split(":");
+  const scored = useApi<any>(`/eval/report?world=${world}${period ? `&period=${period}` : ""}`);
   const report = scored.data?.report;
   const metrics = report?.metrics;
   return (
@@ -15,9 +16,11 @@ export function Scorer() {
       <Card
         title="Proof: the scorer against the hidden answer key"
         actions={
-          <select value={world} onChange={(event) => setWorld(event.target.value)} aria-label="World">
-            <option value="company">company world (October 2026)</option>
-            <option value="cast">cast world (June 2026, unit tests)</option>
+          <select value={choice} onChange={(event) => setChoice(event.target.value)} aria-label="Which close">
+            <option value="company">company world, October 2026</option>
+            <option value="company:2026-11">held out: November 2026</option>
+            <option value="company:2026-12">held out: December 2026</option>
+            <option value="cast">cast world, June 2026 (unit tests)</option>
           </select>
         }
       >

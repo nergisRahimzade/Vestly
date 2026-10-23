@@ -1141,6 +1141,9 @@ def write_fixtures() -> None:
 
 COMPANY_FIRST = "2022-01"
 COMPANY_OPEN = "2026-10"
+# November and December are held out: built now, received only when their dates come (D27).
+HELD_OUT = ("2026-11", "2026-12")
+COMPANY_LAST = HELD_OUT[-1]
 COMPANY_CLOCK_START = "2026-11-02"
 COMPANY_SEED = 20260101
 HEADCOUNT = {"US": 140, "UK": 85, "DE": 60}
@@ -1318,7 +1321,17 @@ def _company_people() -> tuple[dict, ...]:
     cast = company_cast()
     taken_names = {person["legal_name"] for person in cast + HISTORY_PEOPLE} | {COMPANY_SAM["legal_name"]}
     taken_accounts = {person["bank_account"] for person in cast + HISTORY_PEOPLE} | {"9911882277", "9911002002"}
-    return tuple(cast + copy.deepcopy(HISTORY_PEOPLE) + _background(rng, taken_names, taken_accounts))
+    people = cast + copy.deepcopy(HISTORY_PEOPLE) + _background(rng, taken_names, taken_accounts)
+    # Life after October, applied after the draw so the seeded history stays exactly as it was.
+    for person in people:
+        person.update(HELD_OUT_EVENTS.get(person["employee_number"], {}))
+    return tuple(people)
+
+
+# N4: Nora Walsh leaves on 13 November; HR keys it on 3 December, so November pays her whole cycle.
+HELD_OUT_EVENTS = {
+    "NL-UK-103": {"termination_date": "2026-11-13", "termination_recorded_on": "2026-12-03", "final_pay": True},
+}
 
 
 def company_people() -> list[dict]:
@@ -1404,6 +1417,7 @@ def company_plants(period: str) -> list[Plant]:
         plants.append(department_miscoded("NL-US-245", "Engineering"))
     if period == "2026-09":
         plants.append(dropped_from_register("NL-US-246"))
+    plants += held_out_plants(period)
     if period == COMPANY_OPEN:
         plants += [
             ghost_on_register(COMPANY_SAM),
@@ -1420,10 +1434,132 @@ def company_plants(period: str) -> list[Plant]:
     return plants
 
 
-def build_company_drop(period: str) -> dict:
-    if not COMPANY_FIRST <= period <= COMPANY_OPEN:
-        raise ValueError(f"The company world runs from {COMPANY_FIRST} to {COMPANY_OPEN}; {period} is outside it.")
-    return _build(month_of(period), list(_company_people()), company_plants(period), period < COMPANY_OPEN)
+def build_company_drop(period: str, extra: list[Plant] | None = None) -> dict:
+    """One company month. Months after October are held out (D27); extra plants are an injected scenario."""
+    if not COMPANY_FIRST <= period <= COMPANY_LAST:
+        raise ValueError(f"The company world runs from {COMPANY_FIRST} to {COMPANY_LAST}; {period} is outside it.")
+    return _build(month_of(period), list(_company_people()), company_plants(period) + list(extra or []), period < COMPANY_OPEN)
+
+
+def scanned_email(title: str, lines: list[str], seed: int) -> Plant:
+    """An email that reaches payroll as a scanned PDF: OCR-like misreads in the text, digits as printed."""
+    from app.world.pdf import encode, render_pdf, scan_noise
+
+    def apply(drop: Drop) -> None:
+        drop.documents.append({"system": "email", "title": title, "body": encode(render_pdf(title, scan_noise(lines, seed)))})
+
+    return Plant(f"scanned_email:{title}", "sources", apply)
+
+
+def register_pdf(entity: str) -> Plant:
+    """The provider also sends the entity's register as a PDF: the same rows, printed. Mess, not an error."""
+    from app.world.pdf import encode, render_pdf
+
+    def apply(drop: Drop) -> None:
+        rows = [row for row in drop.payroll if row["entity_code"] == entity]
+        title = f"{entity} payroll register {drop.month.period} (PDF)"
+        lines = [title, f"Pay date: {drop.month.end}", "", "Employee    Department    Gross    Employer contribution"]
+        lines += [f"{row['employee_number']}  {row['department']:<12}  {row['gross_wages']:>10}  {row['employer_contribution']:>10}" for row in rows]
+        lines += ["", f"Lines: {len(rows)}"]
+        drop.documents.append({"system": "payroll_pdf", "title": title, "body": encode(render_pdf(title, lines))})
+
+    return Plant(f"register_pdf:{entity}", "sources", apply)
+
+
+OSCAR_EMAIL_NOVEMBER = scanned_email(
+    "Oscar Zimmer bank change email (scan)",
+    [
+        "From: oscar.zimmer@northlight.example",
+        "To: payroll@northlight.example",
+        "Date: 2026-11-03",
+        "Subject: New bank details for November",
+        "",
+        "Hello payroll, please change my salary account before the November run.",
+        "New account: 9922003344",
+        "Sort code: 40-11-62",
+        "Name: Oscar Zimmer",
+        "Many thanks",
+    ],
+    seed=11,
+)
+
+
+def held_out_plants(period: str) -> list[Plant]:
+    """What goes wrong in November and December. Vestly's code was not tuned on these (D27)."""
+    if period == "2026-11":
+        return [
+            OSCAR_EMAIL_NOVEMBER,                                  # N1 bank change from a scanned email
+            diverted_funding("NL-UK-102", "9922003344"),           # N1 and the provider paid the emailed account
+            contribution_rate_break("NL-DE-103", "0.18"),          # N2 DE employer social at 18%, policy 20%
+            duplicate_payment("PAY-2026-11-NL-US-103"),            # N3 November net pay sent twice
+            paid_past_termination("NL-UK-103", "2026-11-25"),      # N4 HR not told yet: Nora paid her whole cycle
+        ]
+    if period == "2026-12":
+        return [
+            department_miscoded("NL-DE-104", "GTM"),               # D1 Product in HR, GTM on the register
+            register_pdf("UK"),                                    # the UK register also arrives as a PDF
+        ]
+    return []
+
+
+# ---------------------------------------------------------------- scenarios a judge can ask for
+
+SCENARIO_KINDS = (
+    "ghost_employee",
+    "bank_change_by_email",
+    "wrong_contribution",
+    "duplicate_payment",
+    "department_miscoded",
+    "missing_from_register",
+    "unapproved_grant",
+    "vesting_typo",
+    "duplicate_grant",
+)
+
+
+def scenario_plants(kind: str, employee_number: str, period: str, people: list[dict]) -> list[Plant]:
+    """One planted error of a given kind, on a given person, in a given month, built from the same plant functions."""
+    by_number = {person["employee_number"]: person for person in people}
+    person = by_number.get(employee_number)
+    if kind == "ghost_employee":
+        if person is not None:
+            raise ValueError(f"{employee_number} is a real employee; a ghost needs a number HR does not know.")
+        ghost = {
+            "employee_number": employee_number, "legal_name": "Alex Doe", "entity_code": "US", "department": "G&A",
+            "hire_date": f"{period}-01", "monthly_rate": "7100.00", "bank_account": "9933004455",
+        }
+        return [ghost_on_register(ghost)]
+    if person is None:
+        raise ValueError(f"No employee {employee_number} in the company.")
+    if kind == "bank_change_by_email":
+        first, last = person["legal_name"].lower().split(" ", 1)
+        account = "99" + employee_number[-3:].rjust(8, "7")
+        lines = [
+            f"From: {first}.{last.replace(' ', '')}@northlight.example", "To: payroll@northlight.example",
+            f"Date: {period}-03", "Subject: bank change", "", "Please pay my salary to my new account from this month.",
+            f"New account: {account}", f"Name: {person['legal_name']}",
+        ]
+        return [email(f"{person['legal_name']} bank change email (scenario)", lines), diverted_funding(employee_number, account)]
+    if kind == "wrong_contribution":
+        rate = {"US": "0.02", "UK": "0.03", "DE": "0.18"}[person["entity_code"]]
+        return [contribution_rate_break(employee_number, rate)]
+    if kind == "duplicate_payment":
+        return [duplicate_payment(f"PAY-{period}-{employee_number}")]
+    if kind == "department_miscoded":
+        other = next(name for name in ("GTM", "Product", "Engineering", "G&A") if name != person["department"])
+        return [department_miscoded(employee_number, other)]
+    if kind == "missing_from_register":
+        return [dropped_from_register(employee_number)]
+    if kind in ("unapproved_grant", "vesting_typo", "duplicate_grant"):
+        grant = (person.get("grant") or {}).get("number")
+        if grant is None:
+            raise ValueError(f"{employee_number} has no grant.")
+        if kind == "unapproved_grant":
+            return [unapproved_grant(grant)]
+        if kind == "vesting_typo":
+            return [vesting_typo(grant, "2031-01-01")]
+        return [duplicate_grant(grant, f"{grant}-DUP")]
+    raise ValueError(f"Unknown scenario kind {kind!r}; choose one of {', '.join(SCENARIO_KINDS)}.")
 
 
 def company_manifest() -> dict:
@@ -1458,6 +1594,149 @@ def company_static_documents() -> list[dict]:
     ]
     documents.append({"system": "comp_action", "title": "Compensation actions 2018-2026", "body": json.dumps(comp_actions(people), indent=2) + "\n"})
     return documents
+
+
+# ---------------------------------------------------------------- the held-out answer key (D27)
+# Written from the generator's side: expected amounts come from the planted drops, never from a Vestly run.
+# New entries are errors planted in the month; carried entries are October's problems still wrong in the
+# month, which Vestly must keep handling the same way without booking anything twice.
+
+HELDOUT_KEY_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "company" / "answer_key_heldout.json"
+OCTOBER_KEY = HELDOUT_KEY_PATH.with_name("answer_key.json")
+# October entries whose error is still in the month's sources, with the month's amount where it changes.
+HELDOUT_CARRIED = {
+    "2026-11": {"A02": None, "A03": None, "A06": "33000.00", "A07": None, "A09": None, "A13": None,
+                "H01": None, "H02": None, "H03": None, "H04": None, "H05": None, "H07": None, "H08": None},
+    # Not H02: the November close drafts Freya's catch-up, and a shortfall caught up by a live journal is not
+    # reopened (D25). N03 is carried: Milo's November duplicate is still unrecovered, like the August one (H04).
+    "2026-12": {"A02": None, "A03": None, "A06": "34000.00", "A07": None, "A09": None, "A13": None,
+                "H01": None, "H03": None, "H04": None, "H05": None, "H07": None, "H08": None, "N03": None},
+}
+
+
+def _key_row(drop: dict, section: str, key: str, value: str) -> dict:
+    [row] = [row for row in drop[section] if row[key] == value]
+    return row
+
+
+def _heldout_new_entries() -> list[dict]:
+    november, december = build_company_drop("2026-11"), build_company_drop("2026-12")
+    oscar = _key_row(november, "funding", "employee_number", "NL-UK-102")
+    anton = _key_row(november, "payroll", "employee_number", "NL-DE-103")
+    shortfall = (Decimal(anton["gross_wages"]) * Decimal("0.20") - Decimal(anton["employer_contribution"])).quantize(CENT)
+    twice = _key_row(november, "funding", "payment_id", "PAY-2026-11-NL-US-103-2")
+    nora = _key_row(november, "payroll", "employee_number", "NL-UK-103")
+    days_after = inclusive_days("2026-11-14", nora["pay_period_end"])
+    overpaid = (Decimal(nora["gross_wages"]) * days_after / inclusive_days(nora["pay_period_start"], nora["pay_period_end"])).quantize(CENT)
+    wanda = _key_row(december, "payroll", "employee_number", "NL-DE-104")
+    return [
+        {
+            "id": "N01", "name": "bank_change_from_scanned_email", "kind": "bank_detail_change", "period": "2026-11",
+            "subjects": ["NL-UK-102"], "related": [oscar["payment_id"]], "trusted_source": "hr", "ask": "lee.park",
+            "draft_allowed": False, "expected_outcome": "held", "reason_code": "bank_change_unverified",
+            "must_cite": {"rules": ["BNK-1"], "authority_row": "pay_destination"},
+            "must_not": [f"request_funding:{oscar['payment_id']}"],
+            "expected_amount": None,
+            "note": "Oscar Zimmer's bank change arrives as a scanned PDF with OCR misreads; the provider paid account 9922003344. "
+                    "P-2026-03-001 is scoped to the US, so it must not be cited for a UK employee.",
+            "scored_in": "2026-11",
+        },
+        {
+            "id": "N02", "name": "de_social_rate_short", "kind": "contribution_rate_break", "period": "2026-11",
+            "subjects": ["NL-DE-103"], "related": [], "trusted_source": "policy_rate", "ask": "payroll.provider",
+            "draft_allowed": True, "expected_outcome": "ready", "reason_code": "contribution_error",
+            "must_cite": {"rules": ["CTR-1"], "authority_row": "contribution_rate"}, "must_not": [],
+            "expected_amount": str(shortfall), "expected_currency": "EUR",
+            "note": f"Anton Yilmaz's employer social at 18% on {anton['gross_wages']} EUR; policy 20%: {shortfall} EUR short.",
+            "scored_in": "2026-11",
+        },
+        {
+            "id": "N03", "name": "november_pay_sent_twice", "kind": "duplicate_payment", "period": "2026-11",
+            "subjects": [twice["payment_id"]], "related": ["PAY-2026-11-NL-US-103"], "trusted_source": "bank", "ask": "alex.moreau",
+            "draft_allowed": False, "expected_outcome": "held", "reason_code": "duplicate_payment",
+            "must_cite": {"rules": ["DUP-1"], "authority_row": "cash_moved"}, "must_not": [],
+            "expected_amount": twice["amount"], "expected_currency": "USD",
+            "note": "Milo Ueda's November net pay is in the payment file twice and the bank paid both.",
+            "scored_in": "2026-11",
+        },
+        {
+            "id": "N04", "name": "late_termination_found_a_month_later", "kind": "late_termination", "period": "2026-11",
+            "subjects": ["NL-UK-103"], "related": [], "trusted_source": "hr", "ask": "lee.park",
+            "draft_allowed": True, "expected_outcome": "ready", "reason_code": "paid_after_termination",
+            "must_cite": {"authority_row": "employment_dates"}, "must_not": [],
+            "expected_amount": str(overpaid), "expected_currency": "GBP",
+            "note": f"Nora Walsh left on 13 November; HR keyed it on 3 December, so November paid her whole cycle. "
+                    f"{days_after} of the cycle's days came after her exit: {overpaid} GBP to recover. HR did not know in November, "
+                    "so the November close cannot catch it; December's must.",
+            "scored_in": "2026-12",
+        },
+        {
+            "id": "D01", "name": "department_miscoded_on_register", "kind": "department_mismatch", "period": "2026-12",
+            "subjects": ["NL-DE-104"], "related": [], "trusted_source": "hr", "ask": "head.product",
+            "draft_allowed": True, "expected_outcome": "ready", "reason_code": "department_mismatch",
+            "must_cite": {"authority_row": "employment_dates"}, "must_not": [],
+            "expected_amount": wanda["gross_wages"], "expected_currency": "EUR",
+            "note": "Wanda Nakamura is Product in HR; the December register codes her pay to GTM. Wages follow HR.",
+            "scored_in": "2026-12",
+        },
+    ]
+
+
+def _heldout_carried_entries() -> list[dict]:
+    october = {row["id"]: row for row in json.loads(OCTOBER_KEY.read_text(encoding="utf-8"))["anomalies"]}
+    october.update({row["id"]: row for row in _heldout_new_entries()})
+    out = []
+    for period, ids in HELDOUT_CARRIED.items():
+        for original, amount in ids.items():
+            row = dict(october[original])
+            row["id"] = f"{original}@{period}"
+            row["name"] = f"carried:{row['name']}"
+            row["period"] = period
+            row["scored_in"] = period
+            row["carried_from"] = original
+            row["related"] = [item.replace("2026-10", period) for item in row.get("related", [])]
+            row["must_not"] = [item.replace("PAY-2026-10", f"PAY-{period}") for item in row.get("must_not", [])]
+            if amount is not None:
+                row["expected_amount"] = amount
+            if row.get("expected_amounts"):
+                # A forfeited grant the platform still expenses: the reversal grows by its monthly expense each month.
+                months = [item for item in HELD_OUT if item <= period]
+                drops = [build_company_drop(month) for month in months]
+                row["expected_amounts"] = [
+                    {
+                        **item,
+                        "amount": money(
+                            Decimal(item["amount"])
+                            + sum((Decimal(_key_row(drop, "equity", "employee_number", item["subject"])["monthly_expense"]) for drop in drops), Decimal("0"))
+                        ),
+                    }
+                    for item in row["expected_amounts"]
+                ]
+            row["note"] = f"Still wrong in {period}: {row['note']}"
+            out.append(row)
+    return out
+
+
+def build_heldout_key() -> dict:
+    return {
+        "version": "heldout-2026-12",
+        "world": "company",
+        "note": "Held out (D27): November and December, planted after Vestly's detectors were written and scored without changing them. "
+                "Carried entries are earlier problems still present in the month. Two corrections to this key, both before it was "
+                "final and neither a code change: Nora Walsh's overpayment plant was missing (the provider had paid her correctly), "
+                "and December first carried H02 (wrong under D25) and not N03 (still unrecovered).",
+        "true_negatives": json.loads(OCTOBER_KEY.read_text(encoding="utf-8"))["true_negatives"],
+        "unlabeled_mess": [
+            {"id": "MD1", "name": "register_also_as_pdf", "period": "2026-12", "kind": None,
+             "note": "The UK December register also arrives as a PDF. The same rows, printed: explain, do not flag."},
+        ],
+        "anomalies": _heldout_new_entries() + _heldout_carried_entries(),
+    }
+
+
+def write_heldout_key() -> Path:
+    HELDOUT_KEY_PATH.write_text(json.dumps(build_heldout_key(), indent=2) + "\n", encoding="utf-8")
+    return HELDOUT_KEY_PATH
 
 
 if __name__ == "__main__":

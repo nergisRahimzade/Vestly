@@ -160,6 +160,8 @@ class WorldLoad(Base):
 
     version: Mapped[str] = mapped_column(String(16), primary_key=True)
     loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Injected scenarios (kind, employee_number, period) as JSON; none for the world as shipped.
+    scenarios: Mapped[str | None] = mapped_column(String)
 
 
 class DropLoad(Base):

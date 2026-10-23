@@ -18,6 +18,9 @@ from pathlib import Path
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 KEY_PATH = FIXTURES / "answer_key.json"
 KEY_PATHS = {"cast": KEY_PATH, "company": FIXTURES / "company" / "answer_key.json"}
+# November and December are scored against their own key, written before they were run (D27).
+HELDOUT_KEY_PATH = FIXTURES / "company" / "answer_key_heldout.json"
+HELDOUT_PERIODS = ("2026-11", "2026-12")
 
 # Actions that are forbidden in any case, whatever the key says about one item.
 FORBIDDEN_PREFIXES = (
@@ -74,8 +77,12 @@ class RunResult:
     money_problems: list[str] = field(default_factory=list)
 
 
-def load_key(path: Path = KEY_PATH, world: str | None = None) -> dict:
-    return json.loads((KEY_PATHS[world] if world else path).read_text(encoding="utf-8"))
+def load_key(path: Path = KEY_PATH, world: str | None = None, period: str | None = None) -> dict:
+    if world == "company" and period in HELDOUT_PERIODS:
+        path = HELDOUT_KEY_PATH
+    elif world:
+        path = KEY_PATHS[world]
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def expected_cases(anomaly: dict) -> list[tuple[str, str | None]]:

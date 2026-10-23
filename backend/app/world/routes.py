@@ -101,6 +101,14 @@ def load(db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> 
     return {"status": result["status"], "people": result["people"]}
 
 
+@router.post("/months/{period}/receive")
+def receive_held_out(period: str, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """A held-out month arrives once the simulated clock reaches its day (D27). The controller lets it in."""
+    from app.world.loader import receive_month
+
+    return receive_month(db, period, who)
+
+
 @router.post("/drops")
 def receive_drop(drop: dict, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
     """A month's file drop arrives. Loading the same drop again changes nothing."""

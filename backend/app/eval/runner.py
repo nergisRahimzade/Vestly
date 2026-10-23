@@ -8,6 +8,7 @@ evidence log, the bank, the ledger), never from what the code meant to do.
 """
 
 import json
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -60,11 +61,12 @@ def fresh_session() -> tuple[Session, object]:
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)(), engine
 
 
-def run_close(period: str, model=None, world: str | None = None) -> RunResult:
+def run_close(period: str, model=None, world: str | None = None, scenarios: list[dict] | None = None) -> RunResult:
     parse_period(period)
     session, engine = fresh_session()
     try:
-        load_world(session, CONTROLLER, world)
+        load_world(session, CONTROLLER, world, scenarios)
+        receive_held_out(session, period, model)
         close_month(session, period)
         # Vestly works every open case; its reports must pass the claim checker.
         run_open_cases(session, period, model or ScriptedModel())
@@ -81,6 +83,28 @@ def run_close(period: str, model=None, world: str | None = None) -> RunResult:
     finally:
         session.close()
         engine.dispose()
+
+
+def receive_held_out(session: Session, period: str, model=None) -> list[str]:
+    """For a held-out month (D27): let the clock reach each held-out drop's day, receive it, and run every month
+    before the scored one as a real close (cases worked, money settled). The same path the months take live."""
+    from app.controls.clock import advance, today
+    from app.periods import month_of
+    from app.world.loader import HELD_OUT, receive_month
+
+    received = []
+    for month in [item for item in HELD_OUT if item <= period]:
+        arrives = month_of(month).received_on
+        while today(session) < arrives:
+            days = (date.fromisoformat(arrives) - date.fromisoformat(today(session))).days
+            advance(session, CONTROLLER, min(days, 60))
+        receive_month(session, month, CONTROLLER)
+        received.append(month)
+        if month < period:
+            close_month(session, month)
+            run_open_cases(session, month, model or ScriptedModel())
+            settle_funding(session, month)
+    return received
 
 
 def _cases(session: Session, period: str) -> list[Case]:
