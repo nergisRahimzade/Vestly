@@ -62,7 +62,7 @@ def test_a_world_with_scenarios_is_not_kept_as_the_plain_worlds_copy(client):
         ({"kind": "ghost_employee", "employee_number": "NL-US-001", "period": "2026-06"}, "is a real employee"),
         ({"kind": "teleport", "employee_number": "NL-US-001", "period": "2026-06"}, "Unknown scenario kind"),
         ({"kind": "duplicate_payment", "employee_number": "NL-US-001", "period": "2027-01"}, "outside it"),
-        ({"kind": "unapproved_grant", "employee_number": "NL-ZZ-404", "period": "2026-06"}, "No employee"),
+        ({"kind": "vesting_typo", "employee_number": "NL-ZZ-404", "period": "2026-06"}, "No employee"),
         ({"kind": "duplicate_payment", "employee_number": "NL-US-001"}, "KIND"),
     ],
     ids=["ghost that exists", "unknown kind", "month outside the world", "unknown person", "missing month"],
@@ -161,3 +161,27 @@ def test_a_scan_misreads_letters_but_keeps_digits_addresses_and_labels():
     assert noisy[2] != lines[2]
     assert render_pdf("t", noisy) == render_pdf("t", noisy), "the same scan gives the same file and the same hash"
     assert pdf_text(render_pdf("t", noisy)).splitlines() == noisy
+
+
+@pytest.mark.parametrize(
+    "kind, opens, subject, outcome, owner",
+    [
+        ("bank_change_by_email", "bank_detail_change", "NL-UK-002", "held", "lee.park"),
+        ("wrong_contribution", "contribution_rate_break", "NL-UK-002", "ready", "payroll.provider"),
+        ("duplicate_payment", "duplicate_payment", "PAY-2026-06-NL-UK-002-2", "held", "alex.moreau"),
+        ("department_miscoded", "department_mismatch", "NL-UK-002", "ready", None),
+        ("missing_from_register", "missing_from_register", "NL-UK-002", "held", "payroll.provider"),
+        ("vesting_typo", "vest_schedule_mismatch", "NL-UK-002", "ready", "morgan.li"),
+        ("duplicate_grant", "duplicate_grant", "NL-UK-002", "rejected_duplicate", "morgan.li"),
+    ],
+)
+def test_every_scenario_kind_planted_on_a_clean_person_opens_its_case(client, kind, opens, subject, outcome, owner):
+    """Owen Blake is clean in the cast's June; each scenario on him must open the case its kind calls for."""
+    with SessionLocal() as db:
+        load_world(db, CONTROLLER, "cast", [{"kind": kind, "employee_number": "NL-UK-002", "period": "2026-06"}])
+        run_close(db, "2026-06")
+        case = db.scalar(select(Case).where(Case.kind == opens, Case.subject_number == subject))
+        assert case is not None, [(row.kind, row.subject_number) for row in db.scalars(select(Case)) if "NL-UK-002" in row.subject_number]
+        assert case.outcome == outcome
+        asked = db.scalars(select(CaseQuestion.asked_to).where(CaseQuestion.case_id == case.id)).all()
+        assert asked and (owner is None or owner in asked)

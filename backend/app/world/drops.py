@@ -1511,7 +1511,8 @@ SCENARIO_KINDS = (
     "duplicate_payment",
     "department_miscoded",
     "missing_from_register",
-    "unapproved_grant",
+    # Not unapproved_grant: a drop can only change the platform's flag, while the signed grant and its board
+    # approval stay on file, so the authority says approved and there is rightly nothing to catch.
     "vesting_typo",
     "duplicate_grant",
 )
@@ -1550,12 +1551,10 @@ def scenario_plants(kind: str, employee_number: str, period: str, people: list[d
         return [department_miscoded(employee_number, other)]
     if kind == "missing_from_register":
         return [dropped_from_register(employee_number)]
-    if kind in ("unapproved_grant", "vesting_typo", "duplicate_grant"):
+    if kind in ("vesting_typo", "duplicate_grant"):
         grant = (person.get("grant") or {}).get("number")
         if grant is None:
             raise ValueError(f"{employee_number} has no grant.")
-        if kind == "unapproved_grant":
-            return [unapproved_grant(grant)]
         if kind == "vesting_typo":
             return [vesting_typo(grant, "2031-01-01")]
         return [duplicate_grant(grant, f"{grant}-DUP")]

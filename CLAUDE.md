@@ -243,12 +243,13 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 16: the company world (307 people, Jan 2022–Oct 2026, October open), history cases, two worlds | `data/four-years-company` |
 | Task 17: employee memory (`app/memory/`), learned observations, history detectors; company October 21/21 | `agent/employee-memory` |
 | Task 18: replay, challenge, precedent proposals, simulated approvers, `/agent/ask` | `agent/challenge-replay-and-approvers` |
+| Task 21: README and demo script; every scenario kind tested | `docs/readme-and-demo` |
 | Task 20: held-out Nov–Dec with their own key, scenarios and reset, PDFs (D27) | `data/held-out-and-scenarios` |
 | Task 19: React UI (login picker, the moment, inboxes, case page, evidence, memory, policy, FX, proof), account-scoped precedents (D26), Playwright walk | `frontend/inbox-timeline-evidence` |
 
 **Plan revised 2026-10-23 (D20–D22):** real Open Exchange Rates rates at each month-end; the world aligned with today (Jan 2022–Sep 2026 closed, October 2026 open, Nov–Dec to come); four years of history for every employee; planted errors in July–December. Until task 16 lands, the code still has the January–June world with June open (section 10).
 
-**Next: task 21 `docs/readme-and-demo`** (pull from `data/held-out-and-scenarios`). Details in PLAN.md section 10.
+**All planned tasks (1–21) are done.** Open: live Claude runs (the account had no API credit on 2026-10-23, so the live tests skip); real November and December rates arrive after their month-ends (`python -m app.fx.update`). Details in PLAN.md section 10.
 
 ## 12. Environment notes
 

@@ -7,7 +7,7 @@ still be opened and replayed. Then the world is loaded into a new file with each
 month's drop. Restart the server on the new file (the default path is the one the server uses).
 
 Kinds: ghost_employee, bank_change_by_email, wrong_contribution, duplicate_payment, department_miscoded,
-missing_from_register, unapproved_grant, vesting_typo, duplicate_grant. A ghost needs an employee number
+missing_from_register, vesting_typo, duplicate_grant. A ghost needs an employee number
 HR does not know (e.g. NL-US-999); every other kind needs a real one.
 """
 
