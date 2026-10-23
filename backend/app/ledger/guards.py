@@ -457,6 +457,30 @@ POSTGRES_GUARDS = [
 ]
 
 
+# Cases and funding: the history of a case, people's answers, its links, and what the bank executed.
+APPEND_ONLY_TABLES = ("case_transitions", "case_answers", "case_links", "bank_transfers")
+for _table in APPEND_ONLY_TABLES:
+    for _event in ("UPDATE", "DELETE"):
+        SQLITE_GUARDS.append(
+            f"""
+    CREATE TRIGGER IF NOT EXISTS {_table}_append_only_{_event.lower()}
+    BEFORE {_event} ON {_table}
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """
+        )
+    POSTGRES_GUARDS.append(f"DROP TRIGGER IF EXISTS {_table}_append_only ON {_table}")
+    POSTGRES_GUARDS.append(
+        f"""
+    CREATE TRIGGER {_table}_append_only
+    BEFORE UPDATE OR DELETE ON {_table}
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """
+    )
+
+
 def install_guards(engine) -> None:
     statements = SQLITE_GUARDS if engine.dialect.name == "sqlite" else POSTGRES_GUARDS
     with engine.begin() as connection:

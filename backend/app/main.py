@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.cases.routes import router as cases_router
 from app.controls.gate import log_refusal
 from app.controls.routes import router as controls_router
 from app.db import SessionLocal, init_db
@@ -19,6 +20,11 @@ from app.world.routes import router as world_router
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    from app.cases.service import resume
+
+    # Every case lives in the database; after a restart, pick each one up where it stood.
+    with SessionLocal() as session:
+        resume(session)
     if os.environ.get("VESTLY_SKIP_WORLD") != "1":
         from app.auth.identities import CONTROLLER_HANDLE, Actor
         from app.world.loader import load_world
@@ -36,6 +42,7 @@ app.include_router(payroll_router)
 app.include_router(equity_router)
 app.include_router(record_router)
 app.include_router(controls_router)
+app.include_router(cases_router)
 
 
 @app.exception_handler(LedgerError)

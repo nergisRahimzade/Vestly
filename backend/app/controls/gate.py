@@ -97,9 +97,12 @@ def log_refusal(exc: LedgerError, session: Session | None = None) -> None:
 
 def check_role(actor: Actor, action: str) -> Verdict:
     """ACC-1: the role's action list in the policy file."""
-    if action in load_policy().role_actions(actor.role):
+    policy = load_policy()
+    if action in policy.role_actions(actor.role):
         return ALLOWED
-    return deny("ACC-1", f"{actor.handle} ({actor.role}) may not {action.replace('_', ' ')}.")
+    target = policy.action_resource(action)
+    on = f" ({target[1]} on {target[0].replace('_', ' ')})" if target else ""
+    return deny("ACC-1", f"{actor.handle} ({actor.role}) may not {action.replace('_', ' ')}{on}.")
 
 
 def check_seat(actor: Actor, seat: str) -> Verdict:

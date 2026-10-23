@@ -41,6 +41,8 @@ class Policy:
     escalation: tuple[tuple[str, str], ...]
     clock_start: str
     roles: tuple[tuple[str, tuple[str, ...]], ...]
+    # action -> (resource, verb)
+    actions: tuple[tuple[str, str, str], ...]
     rules: tuple[tuple[str, str], ...]
     routing: tuple[tuple[str, tuple[str, ...]], ...]
     pay_calendar: tuple[tuple[str, str], ...]
@@ -64,6 +66,13 @@ class Policy:
             if name == role:
                 return actions
         return ()
+
+    def action_resource(self, action: str) -> tuple[str, str] | None:
+        """The record an action touches and how: ("journal", "create")."""
+        for name, resource, verb in self.actions:
+            if name == action:
+                return resource, verb
+        return None
 
     def rule(self, rule_id: str) -> str:
         for name, text in self.rules:
@@ -153,6 +162,7 @@ def _parse_policy(path: Path) -> Policy:
         escalation=tuple((source, target) for source, target in controls["escalation"].items()),
         clock_start=str(controls["clock_start"]),
         roles=tuple((name, tuple(actions or ())) for name, actions in document["roles"].items()),
+        actions=tuple((name, body["resource"], body["verb"]) for name, body in document["actions"].items()),
         rules=tuple((name, str(text)) for name, text in document["rules"].items()),
         routing=tuple((kind, tuple(handles)) for kind, handles in document["routing"].items()),
         pay_calendar=tuple((code, str(cycle)) for code, cycle in document["pay_calendar"].items()),

@@ -1,0 +1,79 @@
+"""The month-end close as one job: check every source, draft, open cases, and ask for the money still owed.
+
+Server code (decision D5). Each piece of work is done under the seat it belongs to: the payroll
+seat reconciles, drafts payroll and asks for funding; the equity seat drafts the stock-expense
+true-up. Running the close again finds the same cases instead of opening new ones.
+"""
+
+from collections import defaultdict
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.auth.identities import EQUITY_SEAT, PAYROLL_SEAT, Actor
+from app.cases.models import Case, CaseLink
+from app.cases.service import FINAL, as_dict, link_drafts, sync_cases
+from app.controls.gate import log_refusal
+from app.controls.models import FundingRequest
+from app.controls.posting import request_funding
+from app.equity.service import draft_equity
+from app.ledger.errors import LedgerError
+from app.payroll.service import draft_payroll
+from app.reconcile.engine import reconcile_period
+
+PAYROLL = Actor(PAYROLL_SEAT, "agent")
+EQUITY = Actor(EQUITY_SEAT, "agent")
+FUNDING_KINDS = {"uncleared_funding"}
+
+
+def run_close(session: Session, period: str) -> dict:
+    run, _ = reconcile_period(session, period, PAYROLL)
+    payroll = draft_payroll(session, period, PAYROLL)
+    equity = draft_equity(session, period, EQUITY)
+    cases = sync_cases(session, run.id, period)
+    link_drafts(session, period)
+    funding, refused = request_due_funding(session, period)
+    return {
+        "period": period,
+        "reconciliation_run": run.id,
+        "journals": [entry.number for entry in payroll["journals"] + equity["journals"]],
+        "held": payroll["held"],
+        "cases": [as_dict(case) for case in cases],
+        "funding_requests": [row.id for row in funding],
+        "refused": refused,
+    }
+
+
+def request_due_funding(session: Session, period: str) -> tuple[list[FundingRequest], list[dict]]:
+    """One request per entity for the ready payment lines no live request carries yet."""
+    due: dict[str, list[Case]] = defaultdict(list)
+    for case in session.scalars(
+        select(Case).where(
+            Case.period == period, Case.kind.in_(FUNDING_KINDS), Case.outcome == "ready", Case.state.not_in(FINAL)
+        )
+    ):
+        if not _has_live_request(session, case):
+            due[case.entity_code].append(case)
+    made, refused = [], []
+    for entity, cases in sorted(due.items()):
+        payments = [case.subject_number for case in cases]
+        try:
+            made.append(
+                request_funding(
+                    session,
+                    PAYROLL,
+                    period,
+                    payments,
+                    f"Re-send the {entity} payments the bank has not cleared: {', '.join(payments)}.",
+                    [case.id for case in cases],
+                )
+            )
+        except LedgerError as exc:
+            log_refusal(exc, session)
+            refused.append({"entity": entity, "payments": payments, "rule": exc.rule, "reason": exc.message})
+    return made, refused
+
+
+def _has_live_request(session: Session, case: Case) -> bool:
+    ids = session.scalars(select(CaseLink.resource_id).where(CaseLink.case_id == case.id, CaseLink.resource == "funding_request"))
+    return any(session.get(FundingRequest, item).status not in ("declined", "voided") for item in ids)

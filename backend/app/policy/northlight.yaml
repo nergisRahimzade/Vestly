@@ -40,10 +40,10 @@ statutory_rates:
 roles:
   agent: [read_scoped, compute, propose_entry, request_funding, hold_case, reject_duplicate,
           ask_human, request_document, request_reopen, propose_precedent]
-  finance_mgr: [approve_entry]
-  controller: [approve_entry, post_entry, lock_period, reopen_period, approve_bank_change,
-               rule_precedent, advance_clock]
-  treasury: [release_funding]
+  finance_mgr: [approve_entry, answer]
+  controller: [approve_entry, approve_funding, post_entry, lock_period, reopen_period, approve_bank_change,
+               rule_precedent, advance_clock, answer]
+  treasury: [release_funding, answer]
   hr_ops: [answer, update_bank_master, record_callback]
   hr_comp: [answer, enter_comp_change]
   legal: [answer, record_board_approval]
@@ -51,6 +51,33 @@ roles:
   dept_head: [answer]
   auditor: []
   none: []
+# Actor x action x resource: what each action does, and to which record. Every action
+# creates, reads or updates; none deletes. A correction is a new record that points at the old one.
+actions:
+  read_scoped:           {resource: source_record, verb: read}
+  compute:               {resource: workpaper, verb: read}
+  propose_entry:         {resource: journal, verb: create}
+  request_funding:       {resource: funding_request, verb: create}
+  hold_case:             {resource: case, verb: update}
+  reject_duplicate:      {resource: case, verb: update}
+  ask_human:             {resource: question, verb: create}
+  request_document:      {resource: question, verb: create}
+  request_reopen:        {resource: question, verb: create}
+  propose_precedent:     {resource: precedent, verb: create}
+  approve_entry:         {resource: journal, verb: update}
+  post_entry:            {resource: journal, verb: update}
+  release_funding:       {resource: funding_request, verb: update}
+  approve_funding:       {resource: funding_request, verb: update}
+  lock_period:           {resource: period, verb: update}
+  reopen_period:         {resource: period, verb: update}
+  approve_bank_change:   {resource: bank_master, verb: update}
+  update_bank_master:    {resource: bank_master, verb: update}
+  rule_precedent:        {resource: precedent, verb: create}
+  advance_clock:         {resource: clock, verb: update}
+  answer:                {resource: question, verb: update}
+  record_callback:       {resource: callback, verb: create}
+  enter_comp_change:     {resource: comp_action, verb: create}
+  record_board_approval: {resource: grant_approval, verb: create}
 rules:
   ACC-1: An identity may only take the actions its role lists.
   SOD-1: The approver must differ from the requester and the preparer. Vestly is always a requester.
@@ -99,6 +126,11 @@ controls:
   escalation:
     finance_mgr: controller
     treasury: controller
+    hr_ops: controller
+    hr_comp: controller
+    legal: controller
+    payroll_provider: controller
+    dept_head: controller
   # The simulated clock starts on the day the June drop arrives.
   clock_start: "2026-07-02"
 facts:

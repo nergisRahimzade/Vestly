@@ -23,6 +23,17 @@ class NoteIn(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class PrecedentIn(BaseModel):
+    rule: str
+    scope: dict = Field(default_factory=dict)
+    ruling: str | None = Field(default=None, max_length=500)
+
+
+class DeclineIn(NoteIn):
+    # The controller may turn the decline into a precedent later cases follow.
+    precedent: PrecedentIn | None = None
+
+
 class CallbackIn(BaseModel):
     employee_number: str
     account: str
@@ -90,9 +101,10 @@ def approve_request(
 
 @router.post("/approvals/{request_id}/decline")
 def decline_request(
-    request_id: str, body: NoteIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)
+    request_id: str, body: DeclineIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)
 ) -> dict:
-    row = approvals.decide(db, request_id, who, approve=False, note=body.note)
+    precedent = body.precedent.model_dump() if body.precedent else None
+    row = approvals.decide(db, request_id, who, approve=False, note=body.note, precedent=precedent)
     return approvals.as_dict(db, row)
 
 

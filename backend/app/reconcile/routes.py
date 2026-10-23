@@ -42,6 +42,7 @@ def policy() -> dict:
         "approval_limit_currency": loaded.approval_limit_currency,
         "callback_window_days": loaded.callback_window_days,
         "roles": {name: list(actions) for name, actions in loaded.roles},
+        "actions": {name: {"resource": resource, "verb": verb} for name, resource, verb in loaded.actions},
         "rules": {name: text for name, text in loaded.rules},
         "facts": [
             {

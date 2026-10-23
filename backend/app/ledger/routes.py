@@ -20,7 +20,6 @@ from app.ledger.service import (
     draft_entry,
     open_period,
     period_label,
-    post_approved,
     reopen_period,
     require_entity,
 )
@@ -174,7 +173,11 @@ def post_journal_entry(
     db: Session = Depends(get_db),
     who: Actor = Depends(current_actor),
 ) -> JournalOut:
-    return journal_out(post_approved(db, entry_id, who))
+    """The posting service posts an approved entry once; posting it again changes nothing."""
+    from app.controls.posting import post_entry
+
+    entry, _posted_now = post_entry(db, entry_id, who)
+    return journal_out(entry)
 
 
 @router.get("/entities/{entity_code}/journal-entries", response_model=list[JournalOut])

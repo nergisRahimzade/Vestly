@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from app.eval import runner
+from app.cases import service as case_service
 from app.eval.score import main, score_period
 from app.eval.scorer import Decision, RunResult, expected_cases, load_key, score
 
@@ -125,7 +125,7 @@ def test_the_real_close_passes_three_times_on_fresh_copies():
 
 def test_the_scorer_notices_a_sabotaged_close(monkeypatch):
     """Proof the score is not a rubber stamp: a close that lets every case through scores badly."""
-    monkeypatch.setattr(runner, "outcome_for", lambda kind, draft_allowed: "ready")
+    monkeypatch.setattr(case_service, "outcome_for", lambda kind, draft_allowed: "ready")
     report, _ = score_period("2026-06", runs=1, key=KEY)
     missed = {row["id"] for row in report["cases"] if not row["caught"]}
     assert missed == {"A01", "A04", "A05", "A06", "A10", "A11", "A12"}

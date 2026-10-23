@@ -29,6 +29,7 @@ from app.world.loader import rate_card_for
 from app.world.models import PayrollRegisterRow
 
 KIND_JOURNAL = "journal_entry"
+KIND_FUNDING = "funding_request"
 
 
 # ---------------------------------------------------------------- binding
@@ -126,6 +127,63 @@ def open_request(session: Session, entry: JournalEntry, requested_by: str) -> Ap
     return request
 
 
+def open_funding_request(session: Session, funding, requested_by: str, case_ids: list[str]) -> ApprovalRequest:
+    """Put a funding batch in front of treasury. Above the limit the controller must approve too (LIM-1)."""
+    from app.controls.posting import funding_binding, lines_of
+
+    policy = load_policy()
+    amount = sum((row.amount for row in lines_of(session, funding) if row.status != "voided"), Decimal("0.00"))
+    amount_usd = _usd(session, amount, funding.currency, funding.period)
+    over_limit = amount_usd is None or amount_usd > policy.approval_limit
+    binding = funding_binding(session, funding, case_ids)
+    on = today(session)
+    request = ApprovalRequest(
+        kind=KIND_FUNDING,
+        subject_id=funding.id,
+        case_id=case_ids[0] if case_ids else None,
+        entity_code=funding.entity_code,
+        period=funding.period,
+        requested_by=requested_by,
+        requested_on=on,
+        requested_at=datetime.now(timezone.utc),
+        binding_hash=binding_hash(binding),
+        binding_json=canonical(binding),
+        amount=amount,
+        currency=funding.currency,
+        amount_usd=amount_usd,
+        approvals_needed=2 if over_limit else 1,
+        needs_controller=over_limit,
+        inbox_roles=json.dumps(["treasury", "controller"] if over_limit else ["treasury"]),
+        status="pending",
+        due_on=add_days(on, policy.reminder_after_days),
+        reminders=0,
+        escalated=False,
+    )
+    session.add(request)
+    session.flush()
+    record(
+        session,
+        requested_by,
+        "approval_requested",
+        "approval_request",
+        request.id,
+        case_id=request.case_id,
+        payload={
+            "funding_request": funding.id,
+            "amount": money_str(amount),
+            "currency": funding.currency,
+            "amount_usd": None if amount_usd is None else money_str(amount_usd),
+            "approvals_needed": request.approvals_needed,
+            "needs_controller": over_limit,
+            "binding_hash": request.binding_hash,
+            "due_on": request.due_on,
+        },
+        basis=[{"type": "rule", "id": "LIM-1"}] if over_limit else [],
+        sim_at=on,
+    )
+    return request
+
+
 def pending_request(session: Session, entry_id: str) -> ApprovalRequest | None:
     return session.scalar(
         select(ApprovalRequest).where(
@@ -165,12 +223,21 @@ def decide_entry(session: Session, entry_id: str, actor: Actor, approve: bool, n
     return _entry(session, entry_id)
 
 
-def decide(session: Session, request_id: str, actor: Actor, approve: bool, note: str | None) -> ApprovalRequest:
+def decide(
+    session: Session, request_id: str, actor: Actor, approve: bool, note: str | None, precedent: dict | None = None
+) -> ApprovalRequest:
     request = session.get(ApprovalRequest, request_id)
     if request is None:
         raise LedgerError("unknown_request", f"No approval request {request_id}.", 404)
     if request.status != "pending":
         raise LedgerError("request_closed", f"This request is {request.status}.", 409)
+    if precedent is not None:
+        # Only the controller turns a decline into a precedent; checked before anything is recorded.
+        enforce(check_role(actor, "rule_precedent"), actor, "rule_precedent")
+        if approve:
+            raise LedgerError("invalid_precedent", "A precedent comes from a decline, not an approval.", 422)
+    if request.kind == KIND_FUNDING:
+        return _decide_funding(session, request, actor, approve, note, precedent)
     entry = _entry(session, request.subject_id)
     action = "approve_entry"
     period = request.period
@@ -216,6 +283,9 @@ def decide(session: Session, request_id: str, actor: Actor, approve: bool, note:
             sim_at=on,
         )
         review_entry(session, entry.id, actor, approve=False, note=note)
+        from app.cases.service import on_declined
+
+        on_declined(session, KIND_JOURNAL, entry.id, actor, note, precedent)
         return request
 
     approvers = [row for row in earlier if row.decision == "approved"]
@@ -249,6 +319,96 @@ def decide(session: Session, request_id: str, actor: Actor, approve: bool, note:
         request.status = "approved"
         session.flush()
         review_entry(session, entry.id, actor, approve=True, note=note)
+    else:
+        session.commit()
+    return request
+
+
+RELEASE_ACTIONS = ("release_funding", "approve_funding")
+
+
+def _decide_funding(
+    session: Session, request: ApprovalRequest, actor: Actor, approve: bool, note: str | None, precedent: dict | None
+) -> ApprovalRequest:
+    """Treasury releases a funding batch. Above the limit the controller approves as well (LIM-1)."""
+    from app.controls.models import FundingRequest
+    from app.controls.posting import decline_funding, funding_binding, release
+
+    funding = session.get(FundingRequest, request.subject_id)
+    action = "release_funding"
+    if actor.handle == request.requested_by:
+        enforce(deny("SOD-1", f"{actor.handle} asked for this funding."), actor, action)
+    own = load_policy().role_actions(actor.role)
+    if not any(item in own for item in RELEASE_ACTIONS):
+        enforce(check_role(actor, action), actor, action)
+    earlier = decisions(session, request)
+    if any(row.decided_by == actor.handle for row in earlier):
+        raise LedgerError("already_decided", f"{actor.handle} has already answered this request.", 409)
+    binding = json.loads(request.binding_json)
+    if binding_hash(funding_binding(session, funding, binding["cases"])) != request.binding_hash:
+        request.status = "voided"
+        session.flush()
+        record(session, actor.handle, "approval_voided", "approval_request", request.id, reason_code="BND-1", sim_at=today(session))
+        session.commit()
+        enforce(deny("BND-1", "The funding batch changed after it was put up for approval."), actor, action)
+
+    on = today(session)
+    if not approve:
+        if not (note or "").strip():
+            raise LedgerError("invalid_note", "A decline needs a reason.", 422)
+        _add_decision(session, request, actor, "declined", note, on)
+        request.status = "declined"
+        decline_funding(session, funding)
+        record(
+            session,
+            actor.handle,
+            "approval_declined",
+            "approval_request",
+            request.id,
+            case_id=request.case_id,
+            payload={"funding_request": funding.id, "note": note},
+            sim_at=on,
+        )
+        session.commit()
+        from app.cases.service import on_declined
+
+        on_declined(session, KIND_FUNDING, funding.id, actor, note, precedent)
+        return request
+
+    approvers = [row for row in earlier if row.decision == "approved"]
+    completes = len(approvers) + 1 >= request.approvals_needed
+    roles = {row.role for row in approvers} | {actor.role}
+    if completes and request.needs_controller and "controller" not in roles:
+        enforce(
+            deny("LIM-1", "This funding is above the approval limit; the controller must be one of the two approvers."),
+            actor,
+            action,
+        )
+    if completes and not any("release_funding" in load_policy().role_actions(role) for role in roles):
+        enforce(deny("ACC-1", "Treasury releases funding; the controller's approval alone sends no money."), actor, action)
+    _add_decision(session, request, actor, "approved", note, on)
+    session.flush()
+    record(
+        session,
+        actor.handle,
+        "approval_given",
+        "approval_request",
+        request.id,
+        case_id=request.case_id,
+        payload={
+            "funding_request": funding.id,
+            "approval": len(approvers) + 1,
+            "of": request.approvals_needed,
+            "binding_hash": request.binding_hash,
+        },
+        basis=[{"type": "rule", "id": "LIM-1"}] if request.needs_controller else [],
+        sim_at=on,
+    )
+    if completes:
+        request.status = "approved"
+        funding.status = "approved"
+        session.flush()
+        release(session, funding, actor.handle)
     else:
         session.commit()
     return request
@@ -335,7 +495,9 @@ def tick(session: Session) -> list[dict]:
     """Remind, then escalate, every request still waiting. Runs whenever the clock moves."""
     policy = load_policy()
     on = today(session)
-    changes = []
+    from app.cases.service import tick as tick_questions
+
+    changes = tick_questions(session)
     for request in session.scalars(select(ApprovalRequest).where(ApprovalRequest.status == "pending")):
         waited = days_between(request.requested_on, on)
         due_reminders = waited // policy.reminder_after_days
