@@ -18,13 +18,14 @@ Stock expense is grant fair value divided by 48 months.
 
 from __future__ import annotations
 
-import calendar
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+
+from app.periods import Month, add_months, month_of, months_between
 
 CENT = Decimal("0.01")
 VEST_MONTHS = 48
@@ -37,6 +38,7 @@ RATE_CARD = {
     "fx_band": "0.01",
     "gbp_usd_reference": "1.2750",
     "gbp_usd_reporting": "1.2700",
+    "eur_usd_reference": "1.0850",
 }
 ENTITY_RATES = {
     "US": {"withholding": Decimal("0.20"), "employer_tax": Decimal("0.08"), "contribution": Decimal("0.04")},
@@ -222,56 +224,6 @@ SAM_ORTIZ = {
 
 
 # ---------------------------------------------------------------- months
-
-
-@dataclass(frozen=True)
-class Month:
-    period: str
-
-    @property
-    def year(self) -> int:
-        return int(self.period[:4])
-
-    @property
-    def number(self) -> int:
-        return int(self.period[5:7])
-
-    @property
-    def start(self) -> str:
-        return f"{self.period}-01"
-
-    @property
-    def end(self) -> str:
-        return f"{self.period}-{calendar.monthrange(self.year, self.number)[1]:02d}"
-
-    @property
-    def label(self) -> str:
-        return f"{calendar.month_name[self.number]} {self.year}"
-
-    @property
-    def received_on(self) -> str:
-        """Drops arrive on the 2nd of the following month."""
-        year, month = divmod(self.year * 12 + self.number, 12)
-        return f"{year:04d}-{month + 1:02d}-02"
-
-
-def month_of(period: str) -> Month:
-    year_text, _, month_text = period.partition("-")
-    if len(year_text) != 4 or len(month_text) != 2 or not 1 <= int(month_text) <= 12:
-        raise ValueError(f"Period must be YYYY-MM, got {period!r}")
-    return Month(period)
-
-
-def months_between(first_day: str, later_month: Month) -> int:
-    year, month = int(first_day[:4]), int(first_day[5:7])
-    return (later_month.year * 12 + later_month.number) - (year * 12 + month)
-
-
-def add_months(iso_date: str, months: int) -> str:
-    year, month, day = (int(part) for part in iso_date.split("-"))
-    month_index = year * 12 + (month - 1) + months
-    new_year, new_month = divmod(month_index, 12)
-    return f"{new_year:04d}-{new_month + 1:02d}-{day:02d}"
 
 
 def money(amount: Decimal) -> str:
@@ -474,6 +426,14 @@ def equity_row(person: dict, month: Month) -> dict:
         status, expense = "vested", Decimal("0")
     else:
         status, expense = "vesting", straight_line(fair_value)
+    grant_currency = CURRENCIES[person["entity_code"]]
+    if currency != grant_currency:
+        # After a transfer the platform books in the new entity's currency, at the reference rates.
+        to_usd = {"USD": Decimal("1")}
+        to_usd["GBP"] = Decimal(RATE_CARD["gbp_usd_reference"])
+        to_usd["EUR"] = Decimal(RATE_CARD["eur_usd_reference"])
+        rate = (to_usd[grant_currency] / to_usd[currency]).quantize(Decimal("0.000001"))
+        expense = (expense * rate).quantize(CENT)
     return {
         "grant_number": grant["number"],
         "employee_number": person["employee_number"],
@@ -641,6 +601,8 @@ def stale_home_entity(employee_number: str) -> Plant:
             item["entity_code"] = home
             item["department"] = person["department"]
             item["currency"] = CURRENCIES[home]
+        grant = _one(drop.equity, "employee_number", employee_number)
+        grant["monthly_expense"] = money(straight_line(Decimal(grant["fair_value"])))
         pay = _one(drop.payroll, "employee_number", employee_number)
         pay["pay_period_start"] = drop.month.start
         pay["pay_period_end"] = drop.month.end
@@ -717,11 +679,33 @@ MAYA_EMAIL = email(
 )
 
 # Months the test world ships with, and what goes wrong in each.
+# January to May were booked and locked by Northlight's old process before Vestly arrived.
+# June is Vestly's first live close.
 MONTHS: dict[str, dict] = {
+    "2026-01": {"closed": True},
+    "2026-02": {"closed": True},
     "2026-03": {"closed": True},
+    "2026-04": {"closed": True},
+    "2026-05": {"closed": True},
     "2026-06": {"closed": False},
 }
+
+
+def carry_over(*stale_grants: str) -> list[Plant]:
+    """Errors the source systems repeat every month until someone fixes them."""
+    plants = [stale_vesting_flag(*stale_grants)] if stale_grants else []
+    return plants + [
+        unapproved_grant("GR-DE-001"),
+        contribution_rate_break("NL-UK-001", "0.03"),
+        vesting_typo("GR-US-002", "2027-03-01"),
+    ]
+
+
 DEFAULT_PLANTS: dict[str, list[Plant]] = {
+    "2026-01": carry_over("GR-UK-003"),
+    "2026-02": carry_over("GR-UK-003"),
+    "2026-04": carry_over("GR-US-003", "GR-UK-003"),
+    "2026-05": carry_over("GR-US-003", "GR-UK-003"),
     "2026-03": [
         paid_past_termination("NL-US-003", paid_through="2026-03-15", gross="7500.00"),
         stale_vesting_flag("GR-UK-003"),
@@ -887,6 +871,7 @@ def rate_card_body() -> str:
             "Germany employer social contributions: 20% of gross wages.",
             "A GBP to USD rate within 1% of the reference rate is an explained difference.",
             f"Reference GBPUSD {RATE_CARD['gbp_usd_reference']}. Management pack used {RATE_CARD['gbp_usd_reporting']}.",
+            f"Reference EURUSD {RATE_CARD['eur_usd_reference']}.",
             "",
         ]
     )

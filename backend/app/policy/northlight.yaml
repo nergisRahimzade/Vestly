@@ -23,6 +23,28 @@ contributions:
   US: "0.04"
   UK: "0.05"
   DE: "0.20"
+# Simulated statutory rates. Real withholding depends on the person; these are flat
+# so the synthetic books land on cents. Labeled as simulated in the demo.
+statutory_rates:
+  US:
+    withholding: "0.20"
+    employer_tax: "0.08"
+  UK:
+    withholding: "0.20"
+    employer_tax: "0.10"
+  DE:
+    withholding: "0.25"
+    employer_tax: "0.00"
+controls:
+  # LIM-1: an entry or funding release above this needs two approvers. Not the same
+  # number as materiality, which decides who looks at a difference.
+  approval_limit: "25000.00"
+  approval_limit_currency: USD
+  # BNK-1: a bank-detail change needs a call-back logged within this many days before the pay run.
+  callback_window_days: 5
+  # An unanswered question gets a reminder after this many days, and escalates after this many reminders.
+  reminder_after_days: 2
+  escalate_after_reminders: 2
 facts:
   employment_dates:
     authority: hr

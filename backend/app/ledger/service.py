@@ -2,12 +2,20 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.identities import Actor
-from app.auth.permissions import JOURNAL_DRAFT, JOURNAL_POST, JOURNAL_REVIEW, PERIOD_LOCK, PERIOD_OPEN, require
+from app.auth.permissions import (
+    JOURNAL_DRAFT,
+    JOURNAL_POST,
+    JOURNAL_REVIEW,
+    PERIOD_LOCK,
+    PERIOD_OPEN,
+    PERIOD_REOPEN,
+    require,
+)
 from app.ledger.chart import DEPARTMENTS
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, JournalLine, Period
@@ -57,7 +65,7 @@ def open_period(session: Session, entity_code: str, period: str, actor: Actor) -
     entity = require_entity(session, entity_code)
     existing = find_period(session, entity, period)
     if existing is not None:
-        if existing.status != "open":
+        if not existing.accepts_entries:
             raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409)
         return existing, False
     year, month = parse_period(period)
@@ -78,6 +86,29 @@ def lock_period(session: Session, entity_code: str, period: str, actor: Actor) -
     row.status = "locked"
     row.locked_by = actor.handle
     row.locked_at = datetime.now(timezone.utc)
+    session.commit()
+    return row
+
+
+def reopen_period(session: Session, entity_code: str, period: str, actor: Actor, reason: str) -> Period:
+    """Unlock a closed month so a correction can post. Only the controller, always with a reason.
+
+    The month shows as reopened until the controller locks it again.
+    """
+    require(actor, PERIOD_REOPEN, "reopen a period")
+    entity = require_entity(session, entity_code)
+    row = find_period(session, entity, period)
+    if row is None:
+        raise LedgerError("period_not_open", f"{entity.code} {period} has never been opened.", 404)
+    if row.status != "locked":
+        raise LedgerError("period_not_locked", f"{entity.code} {period} is {row.status}, not locked.", 409)
+    reason = (reason or "").strip()
+    if not reason:
+        raise LedgerError("invalid_reason", "Reopening a closed month needs a reason.", 422)
+    row.status = "reopened"
+    row.reopened_by = actor.handle
+    row.reopened_at = datetime.now(timezone.utc)
+    row.reopen_reason = reason
     session.commit()
     return row
 
@@ -146,7 +177,7 @@ def _open_period_for(session: Session, entity: Entity, period: str, verb: str) -
     period_row = find_period(session, entity, period)
     if period_row is None:
         raise LedgerError("period_not_open", f"Open {entity.code} {period} before {verb}.", 422)
-    if period_row.status != "open":
+    if not period_row.accepts_entries:
         raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409)
     return period_row
 
@@ -160,11 +191,13 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
         raise LedgerError("invalid_memo", "A journal entry needs a memo.", 422)
     drafts = _line_drafts(session, list(payload["lines"]))
     _require_balance(drafts)
-    existing = session.scalar(
-        select(func.count())
-        .select_from(JournalEntry)
-        .where(JournalEntry.entity_id == entity.id, JournalEntry.period_id == period_row.id)
+    numbers = session.scalars(
+        select(JournalEntry.number).where(
+            JournalEntry.entity_id == entity.id, JournalEntry.period_id == period_row.id
+        )
     )
+    # The highest number used so far, not a count, so a number is never handed out twice.
+    existing = max((int(number.rsplit("-", 1)[1]) for number in numbers), default=0)
     booking_key = payload.get("booking_key")
     if booking_key is not None:
         booking_key = str(booking_key).strip() or None
@@ -179,7 +212,7 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
     entry = JournalEntry(
         entity=entity,
         period=period_row,
-        number=f"JE-{entity.code}-{period}-{int(existing or 0) + 1:04d}",
+        number=f"JE-{entity.code}-{period}-{existing + 1:04d}",
         memo=memo,
         booking_key=booking_key,
         status="draft",
@@ -218,6 +251,20 @@ def draft_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
     entry, entity, period = _build_entry(session, payload, actor.handle)
     session.add(entry)
     _commit(session, entity.code, period)
+    return entry
+
+
+def withdraw_draft(session: Session, entry: JournalEntry, actor: Actor, reason: str) -> JournalEntry:
+    """The preparer takes back their own draft. It stays on record as withdrawn."""
+    require(actor, JOURNAL_DRAFT, "withdraw a draft")
+    if entry.status != "draft":
+        raise LedgerError("journal_is_final", f"{entry.number} is {entry.status}, not a draft.", 409)
+    if entry.prepared_by != actor.handle:
+        raise LedgerError("forbidden", "Only the preparer can withdraw a draft.", 403)
+    entry.status = "withdrawn"
+    entry.withdrawn_at = datetime.now(timezone.utc)
+    entry.withdraw_reason = reason
+    session.flush()
     return entry
 
 

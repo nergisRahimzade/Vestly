@@ -18,7 +18,8 @@
     "de_social_rate": "0.20",
     "fx_band": "0.01",
     "gbp_usd_reference": "1.2750",
-    "gbp_usd_reporting": "1.2700"
+    "gbp_usd_reporting": "1.2700",
+    "eur_usd_reference": "1.0850"
   },
   "hr": [
     {
@@ -881,7 +882,7 @@
     {
       "system": "rate_card",
       "title": "Employer contribution rate card",
-      "body": "Northlight employer contribution rates. Account numbers and people are synthetic.\nUS 401(k) match: 4% of gross wages.\nUK employer pension: 5% of gross wages.\nGermany employer social contributions: 20% of gross wages.\nA GBP to USD rate within 1% of the reference rate is an explained difference.\nReference GBPUSD 1.2750. Management pack used 1.2700.\n"
+      "body": "Northlight employer contribution rates. Account numbers and people are synthetic.\nUS 401(k) match: 4% of gross wages.\nUK employer pension: 5% of gross wages.\nGermany employer social contributions: 20% of gross wages.\nA GBP to USD rate within 1% of the reference rate is an explained difference.\nReference GBPUSD 1.2750. Management pack used 1.2700.\nReference EURUSD 1.0850.\n"
     },
     {
       "system": "email",

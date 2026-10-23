@@ -551,6 +551,8 @@ frontend/           # NEW  React (Vite)
 | D9 | Two thresholds: materiality 25.00 USD decides who looks at a difference; LIM-1 25,000.00 USD decides how many approve. | They were the same number with different meanings. |
 | D10 | A login picker issues tokens; `VESTLY_TOKEN_SECRET` is set outside tests. | Fixes G15. |
 | D11 | Scripted model mode is a first-class backend, not a test stub. | Deterministic tests, offline demos, and a baseline the live model is scored against. |
+| D13 | Vestly's books start with the first loaded month (January 2026). Before that, the ledger is taken to agree with the subledger per grant (the opening position). The true-up and its per-grant explanation cover only the months since the last live true-up. | The world has no 2024–2025 ledger; the assumption is stated in code and in the draft response (`window_start`, `explained_from`). |
+| D14 | After a transfer, stock expense is booked in the new entity's currency, translated from the grant currency through each currency's USD reference rate for the month. No rate means no draft; a person supplies it. | Tomas's 500.00 EUR becomes 425.49 GBP; nothing books at a guessed rate. |
 | D12 | One error, one period. Every Vestly journal carries a booking key (wages per entity and period, a correction per person and source period); the database refuses a second active entry with the same key; equity catch-ups are cumulative subledger minus cumulative booked. | Fixes G16 and makes DUP-1 a database rule, not a hope. |
 
 ---
@@ -568,6 +570,9 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 | 3 | `data/test-world-and-answer-key` | 15-person cast, signed grants, comp actions, answer key |
 | 4 | `backend/payroll-drafts` | Payroll drafts, UK accrual, overpayment, suspense |
 | 5 | `backend/equity-subledger` | Grant-by-grant subledger and equity drafts |
+| — | `plan/vestly-design` | This plan |
+| Fix | `fix/one-period-per-error` | Booking keys; Priya's March overpayment booked once (G16) |
+| 6 | `fix/truth-booking-and-history` | Subledger and payroll read loaded data; January to June world; equity true-up; withdrawn drafts; non-repeating numbers; reopen; SQLite balance trigger; drops load at run time (G1–G11, G14) |
 
 ### Foundation fixes
 

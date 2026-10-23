@@ -1,3 +1,5 @@
+"""Bring file drops into the database. Everything after this reads the database, never the fixture files."""
+
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -6,11 +8,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
-from app.ledger.service import import_posted_entry, lock_period, open_period
-from app.world.drops import fixture_dir
+from app.auth.permissions import WORLD_LOAD, require
+from app.ledger.chart import ENTITIES as ENTITY_ROWS
+from app.ledger.errors import LedgerError
+from app.ledger.service import import_posted_entry, lock_period, open_period, parse_period
+from app.world.drops import MONTHS, fixture_dir
 from app.world.evidence import load_static_evidence
 from app.world.models import (
     BankLine,
+    DropLoad,
     EquitySnapshot,
     FundingInstruction,
     HrCensusRow,
@@ -22,25 +28,79 @@ from app.world.models import (
 )
 
 WORLD_VERSION = "2026-06"
-ENTITIES = ("US", "UK", "DE")
-CURRENCY = {"US": "USD", "UK": "GBP", "DE": "EUR"}
+ENTITIES = tuple(code for code, _name, _currency in ENTITY_ROWS)
+CURRENCY = {code: currency for code, _name, currency in ENTITY_ROWS}
+DROP_SECTIONS = ("period", "received_on", "close_period", "rate_card", "hr", "payroll", "funding", "equity", "bank")
 
 
 def load_world(session: Session, actor: Actor) -> dict:
-    """Load the file drops and post the books as they stood. The actor must be allowed to post and lock."""
+    """Load the months the test world ships with, oldest first. The actor must be allowed to post and lock."""
     if session.get(WorldLoad, WORLD_VERSION) is not None:
         return {"status": "already_loaded", "people": _people_count(session)}
-    for period in ("2026-03", "2026-06"):
-        drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
-        store_drop(session, drop)
     load_static_evidence(session)
     session.commit()
-    _derive_people(session)
-    session.commit()
-    _post_history(session, actor)
+    for period in sorted(MONTHS):
+        load_drop(session, read_drop_file(period), actor)
     session.add(WorldLoad(version=WORLD_VERSION, loaded_at=datetime.now(timezone.utc)))
     session.commit()
     return {"status": "loaded", "people": _people_count(session)}
+
+
+def read_drop_file(period: str) -> dict:
+    return json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
+
+
+def load_drop(session: Session, drop: dict, actor: Actor) -> dict:
+    """Store one month's drop, book what was already on the books, and lock the month if it arrived closed.
+
+    Loading the same drop twice does nothing. A different drop for a month already loaded is refused.
+    """
+    require(actor, WORLD_LOAD, "load a file drop")
+    missing = [key for key in DROP_SECTIONS if key not in drop]
+    if missing:
+        raise LedgerError("invalid_drop", f"The drop is missing {', '.join(missing)}.", 422)
+    period = str(drop["period"])
+    parse_period(period)
+    digest = drop_hash(drop)
+    existing = session.get(DropLoad, period)
+    if existing is not None:
+        if existing.content_hash == digest:
+            return {"status": "already_loaded", "period": period}
+        raise LedgerError("drop_conflict", f"A different {period} drop is already loaded.", 409)
+    store_drop(session, drop)
+    session.add(
+        DropLoad(
+            period=period,
+            content_hash=digest,
+            received_on=drop["received_on"],
+            closed=bool(drop["close_period"]),
+            rate_card=json.dumps(drop["rate_card"], sort_keys=True),
+            loaded_by=actor.handle,
+            loaded_at=datetime.now(timezone.utc),
+        )
+    )
+    session.commit()
+    _refresh_people(session)
+    session.commit()
+    _book_history(session, drop, actor)
+    return {"status": "loaded", "period": period, "closed": bool(drop["close_period"])}
+
+
+def drop_hash(drop: dict) -> str:
+    return hashlib.sha256(json.dumps(drop, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def world_loaded(session: Session) -> bool:
+    return session.scalar(select(func.count()).select_from(DropLoad)) > 0
+
+
+def first_loaded_period(session: Session) -> str | None:
+    return session.scalar(select(func.min(DropLoad.period)))
+
+
+def rate_card_for(session: Session, period: str) -> dict | None:
+    row = session.get(DropLoad, period)
+    return None if row is None else json.loads(row.rate_card)
 
 
 def _people_count(session: Session) -> int:
@@ -69,7 +129,7 @@ def store_drop(session: Session, drop: dict) -> None:
         "funding": drop["funding"],
         "equity": drop["equity"],
         "bank": drop["bank"],
-        "ledger": drop["ledger_entries"],
+        "ledger": drop.get("ledger_entries", []),
     }
     documents = {
         system: _document(
@@ -81,7 +141,7 @@ def store_drop(session: Session, drop: dict) -> None:
         )
         for system, payload in sections.items()
     }
-    for extra in drop["documents"]:
+    for extra in drop.get("documents", []):
         documents[extra["title"]] = _document(extra["system"], period, extra["title"], extra["body"], received_on)
     session.add_all(documents.values())
     session.flush()
@@ -95,7 +155,7 @@ def store_drop(session: Session, drop: dict) -> None:
     session.add_all(FundingInstruction(document_id=payroll.id, period=period, **row) for row in drop["funding"])
     session.add_all(EquitySnapshot(document_id=equity.id, period=period, **row) for row in drop["equity"])
     session.add_all(BankLine(document_id=bank.id, period=period, **row) for row in drop["bank"])
-    for entry in drop["ledger_entries"]:
+    for entry in drop.get("ledger_entries", []):
         currency = CURRENCY[entry["entity_code"]]
         session.add_all(
             LedgerExportLine(
@@ -114,46 +174,44 @@ def store_drop(session: Session, drop: dict) -> None:
         )
 
 
-def _derive_people(session: Session) -> None:
-    hr_rows = list(session.scalars(select(HrCensusRow).order_by(HrCensusRow.period)))
-    payroll_rows = list(session.scalars(select(PayrollRegisterRow).order_by(PayrollRegisterRow.period)))
+def _refresh_people(session: Session) -> None:
+    """Everyone any source file names. HR's latest row wins; someone only payroll knows stays unlisted in HR."""
     latest: dict[str, HrCensusRow | PayrollRegisterRow] = {}
     listed: set[str] = set()
-    for row in hr_rows:
+    for row in session.scalars(select(PayrollRegisterRow).order_by(PayrollRegisterRow.period)):
+        latest[row.employee_number] = row
+    for row in session.scalars(select(HrCensusRow).order_by(HrCensusRow.period)):
         latest[row.employee_number] = row
         listed.add(row.employee_number)
-    for row in payroll_rows:
-        latest.setdefault(row.employee_number, row)
+    existing = {row.employee_number: row for row in session.scalars(select(Person))}
     for number in sorted(latest):
         source = latest[number]
-        session.add(
-            Person(
-                employee_number=number,
-                legal_name=source.legal_name,
-                entity_code=source.entity_code,
-                department=source.department,
-                listed_in_hr=number in listed,
-            )
+        person = existing.get(number)
+        if person is None:
+            person = Person(employee_number=number)
+            session.add(person)
+        person.legal_name = source.legal_name
+        person.entity_code = source.entity_code
+        person.department = source.department
+        person.listed_in_hr = number in listed
+
+
+def _book_history(session: Session, drop: dict, actor: Actor) -> None:
+    period = drop["period"]
+    for entity in ENTITIES:
+        open_period(session, entity, period, actor)
+    for entry in drop.get("ledger_entries", []):
+        import_posted_entry(
+            session,
+            {
+                "entity_code": entry["entity_code"],
+                "period": period,
+                "memo": entry["memo"],
+                "lines": entry["lines"],
+            },
+            actor,
+            source="northlight.prior_ledger",
         )
-
-
-def _post_history(session: Session, actor: Actor) -> None:
-    for period in ("2026-03", "2026-06"):
-        drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
+    if drop["close_period"]:
         for entity in ENTITIES:
-            open_period(session, entity, period, actor)
-        for entry in drop["ledger_entries"]:
-            import_posted_entry(
-                session,
-                {
-                    "entity_code": entry["entity_code"],
-                    "period": period,
-                    "memo": entry["memo"],
-                    "lines": entry["lines"],
-                },
-                actor,
-                source="northlight.prior_ledger",
-            )
-        if drop["close_period"]:
-            for entity in ENTITIES:
-                lock_period(session, entity, period, actor)
+            lock_period(session, entity, period, actor)

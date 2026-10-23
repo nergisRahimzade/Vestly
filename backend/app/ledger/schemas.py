@@ -52,6 +52,12 @@ class PeriodOut(BaseModel):
     period: str
     status: str
     locked_by: str | None
+    reopened_by: str | None = None
+    reopen_reason: str | None = None
+
+
+class ReopenIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class EntityOut(BaseModel):

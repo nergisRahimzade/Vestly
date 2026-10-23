@@ -35,7 +35,12 @@ class Period(Base):
     __tablename__ = "periods"
     __table_args__ = (
         UniqueConstraint("entity_id", "year", "month", name="one_period_per_entity_month"),
-        CheckConstraint("status IN ('open', 'locked')", name="period_status_known"),
+        # reopened: a controller unlocked a closed month, with a reason, to post a correction.
+        CheckConstraint("status IN ('open', 'locked', 'reopened')", name="period_status_known"),
+        CheckConstraint(
+            "status <> 'reopened' OR (reopened_by IS NOT NULL AND reopen_reason IS NOT NULL)",
+            name="reopen_has_reason",
+        ),
         CheckConstraint("month >= 1 AND month <= 12", name="period_month_valid"),
     )
 
@@ -46,12 +51,21 @@ class Period(Base):
     status: Mapped[str] = mapped_column(String(8), nullable=False, default="open")
     locked_by: Mapped[str | None] = mapped_column(String(80))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reopened_by: Mapped[str | None] = mapped_column(String(80))
+    reopened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reopen_reason: Mapped[str | None] = mapped_column(String(500))
+
+    @property
+    def accepts_entries(self) -> bool:
+        return self.status in ("open", "reopened")
 
     entity: Mapped[Entity] = relationship()
 
 
 class JournalEntry(Base):
     """A journal moves through draft, then approved or rejected, then posted.
+
+    A draft its preparer replaces is withdrawn, not deleted, so every proposal stays on record.
 
     The preparer can never be the reviewer. That rule is a database check, not only a service rule.
 
@@ -70,10 +84,12 @@ class JournalEntry(Base):
             sqlite_where=text("status IN ('draft', 'approved', 'posted')"),
             postgresql_where=text("status IN ('draft', 'approved', 'posted')"),
         ),
-        CheckConstraint("status IN ('draft', 'approved', 'rejected', 'posted')", name="journal_status_known"),
+        CheckConstraint(
+            "status IN ('draft', 'approved', 'rejected', 'posted', 'withdrawn')", name="journal_status_known"
+        ),
         CheckConstraint("reviewed_by IS NULL OR reviewed_by <> prepared_by", name="preparer_is_not_reviewer"),
         CheckConstraint(
-            "status = 'draft' OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)",
+            "status IN ('draft', 'withdrawn') OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)",
             name="reviewed_after_draft",
         ),
         CheckConstraint(
@@ -97,6 +113,8 @@ class JournalEntry(Base):
     review_note: Mapped[str | None] = mapped_column(String(500))
     posted_by: Mapped[str | None] = mapped_column(String(80))
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdraw_reason: Mapped[str | None] = mapped_column(String(500))
 
     entity: Mapped[Entity] = relationship()
     period: Mapped[Period] = relationship()

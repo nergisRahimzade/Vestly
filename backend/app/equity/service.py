@@ -1,46 +1,163 @@
+"""The equity subledger and the monthly stock-compensation true-up.
+
+Vestly's books start with the first loaded month. Before that, the ledger is taken to agree
+with the subledger (the opening position). From then on, each close drafts the difference
+between what the subledger says has been earned and what the ledger already holds, so an
+error from any earlier month is corrected once, in the first open month, and never again.
+"""
+
+import hashlib
+import json
+from collections import defaultdict
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.identities import Actor
 from app.auth.permissions import JOURNAL_DRAFT, LEDGER_READ, require
-from app.equity.models import EquityGrantMonth
-from app.equity.schedule import GrantMonth, as_dict, load_signed_grants, schedule_for
+from app.equity.models import EquityGrantMonth, EquityScheduleRun
+from app.equity.schedule import EmployeeFacts, GrantMonth, SignedGrant, as_dict, parse_signed_grant, schedule_for
+from app.ledger.chart import ENTITIES as ENTITY_ROWS
 from app.ledger.errors import LedgerError
-from app.ledger.models import JournalEntry, Period
+from app.ledger.models import Account, JournalEntry, JournalLine, Period
 from app.ledger.money import CENT, money_str
-from app.ledger.service import draft_entry, find_period, parse_period, require_entity
-from app.world.drops import ENTITIES, grants_dir, month_of
-from app.world.loader import WORLD_VERSION
-from app.world.models import EquitySnapshot, WorldLoad
+from app.ledger.service import (
+    LIVE_STATUSES,
+    draft_entry,
+    find_period,
+    live_entry_for_key,
+    parse_period,
+    period_label,
+    require_entity,
+    withdraw_draft,
+)
+from app.periods import add_months, month_of
+from app.world.loader import first_loaded_period, world_loaded
+from app.world.models import DropLoad, EquitySnapshot, HrCensusRow, SourceDocument
 
 EQUITY_PREFIX = "[Equity]"
 ZERO = Decimal("0.00")
+ENTITIES = tuple(code for code, _name, _currency in ENTITY_ROWS)
 
 
-def rebuild_schedules(session: Session, through_period: str) -> list[GrantMonth]:
-    """Rebuild every grant through this month from the signed grant and true HR dates."""
+# ---------------------------------------------------------------- inputs, all from the database
+
+
+def signed_grants(session: Session) -> list[SignedGrant]:
+    rows = session.scalars(
+        select(SourceDocument).where(SourceDocument.system == "signed_grant").order_by(SourceDocument.title)
+    )
+    return [parse_signed_grant(row.body, row.content_hash) for row in rows]
+
+
+def employee_facts(session: Session, through_period: str) -> dict[str, EmployeeFacts]:
+    """HR's view of each person using only HR files received for months up to through_period."""
+    rows = list(
+        session.scalars(
+            select(HrCensusRow).where(HrCensusRow.period <= through_period).order_by(HrCensusRow.period)
+        )
+    )
+    by_person: dict[str, list[HrCensusRow]] = defaultdict(list)
+    for row in rows:
+        by_person[row.employee_number].append(row)
+    facts: dict[str, EmployeeFacts] = {}
+    for number, history in by_person.items():
+        latest = history[-1]
+        assignments: dict[str, tuple[str, str, str]] = {}
+        for row in history:
+            assignments[row.period] = (row.period, row.entity_code, row.department)
+        facts[number] = EmployeeFacts(
+            employee_number=number,
+            legal_name=latest.legal_name,
+            hire_date=latest.hire_date,
+            termination_date=latest.termination_date if latest.status == "terminated" else None,
+            assignments=tuple(assignments[period] for period in sorted(assignments)),
+        )
+    return facts
+
+
+def rate_cards(session: Session) -> dict[str, dict]:
+    return {row.period: json.loads(row.rate_card) for row in session.scalars(select(DropLoad))}
+
+
+def _inputs_hash(session: Session, through_period: str) -> str:
+    hashes = session.scalars(
+        select(SourceDocument.content_hash)
+        .where(
+            SourceDocument.system.in_(("hr", "signed_grant")),
+            (SourceDocument.period <= through_period) | (SourceDocument.period == "static"),
+        )
+        .order_by(SourceDocument.content_hash)
+    )
+    cards = sorted(f"{period}:{card}" for period, card in rate_cards(session).items() if period <= through_period)
+    text = "\n".join(list(hashes) + cards)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------- the subledger
+
+
+def compute_schedules(session: Session, through_period: str) -> tuple[list[GrantMonth], list[dict]]:
+    """Build every grant's schedule in memory. Nothing is written."""
     parse_period(through_period)
-    session.execute(delete(EquityGrantMonth))
+    facts = employee_facts(session, through_period)
+    cards = rate_cards(session)
     rows: list[GrantMonth] = []
-    for grant in load_signed_grants(grants_dir()):
-        for row in schedule_for(grant, through_period):
+    notes: list[dict] = []
+    for grant in signed_grants(session):
+        if grant.grant_date[:7] > through_period:
+            continue
+        person = facts.get(grant.employee_number)
+        if person is None:
+            notes.append(
+                {
+                    "kind": "grant_without_hr_record",
+                    "grant_number": grant.grant_number,
+                    "employee_number": grant.employee_number,
+                    "legal_name": grant.legal_name,
+                    "ask": "lee.park",
+                }
+            )
+            continue
+        for row in schedule_for(grant, through_period, person, cards):
             if row.cumulative_expense + CENT < row.vested_value:
                 raise LedgerError(
                     "subledger_broken",
                     f"{row.grant_number} {row.period}: cumulative expense below the vested portion.",
                     500,
                 )
-            session.add(_row(row))
             rows.append(row)
+    return rows, notes
+
+
+def rebuild_schedules(session: Session, through_period: str, actor: Actor) -> tuple[EquityScheduleRun, list[GrantMonth]]:
+    """Build the subledger and keep it as a new run. Earlier runs stay as they were."""
+    rows, _notes = compute_schedules(session, through_period)
+    previous = session.scalar(select(func.max(EquityScheduleRun.sequence)))
+    run = EquityScheduleRun(
+        sequence=int(previous or 0) + 1,
+        through_period=through_period,
+        built_by=actor.handle,
+        built_at=datetime.now(timezone.utc),
+        inputs_hash=_inputs_hash(session, through_period),
+    )
+    session.add(run)
+    session.flush()
+    session.add_all(_row(run.id, row) for row in rows)
     session.commit()
-    return rows
+    return run, rows
+
+
+def latest_schedule_run(session: Session) -> EquityScheduleRun | None:
+    return session.scalar(select(EquityScheduleRun).order_by(EquityScheduleRun.sequence.desc()).limit(1))
 
 
 def schedules_as_of(session: Session, through_period: str, actor: Actor, grant_number: str | None = None) -> list[dict]:
+    """A read. It computes the schedule and stores nothing."""
     require(actor, LEDGER_READ, "read equity schedules")
-    rows = rebuild_schedules(session, through_period)
+    rows, _notes = compute_schedules(session, through_period)
     if grant_number:
         rows = [row for row in rows if row.grant_number == grant_number]
         if not rows:
@@ -48,41 +165,189 @@ def schedules_as_of(session: Session, through_period: str, actor: Actor, grant_n
     return [as_dict(row) for row in rows]
 
 
-def draft_equity(session: Session, period: str, actor: Actor) -> dict:
-    require(actor, JOURNAL_DRAFT, "draft equity journals")
-    parse_period(period)
-    if session.get(WorldLoad, WORLD_VERSION) is None:
-        raise LedgerError("world_not_loaded", "Load the company file drops before drafting equity.", 409)
-    _require_open_books(session, period)
-    _clear_prior_drafts(session, period, actor)
-    rows = rebuild_schedules(session, period)
-    this_month = [row for row in rows if row.period == period]
-    platform = list(session.scalars(select(EquitySnapshot).where(EquitySnapshot.period == period)))
-    notes = _notes(this_month, platform)
-    journals: list[JournalEntry] = []
-    for entity in ENTITIES:
-        entry = _entity_journal(session, period, entity, this_month, actor)
-        if entry is not None:
-            journals.append(entry)
-    return {
-        "period": period,
-        "schedules": [as_dict(row) for row in this_month],
-        "notes": notes,
-        "journals": journals,
-    }
-
-
 def grant_month(session: Session, period: str, employee_number: str) -> EquityGrantMonth | None:
+    run = latest_schedule_run(session)
+    if run is None:
+        return None
     return session.scalar(
         select(EquityGrantMonth).where(
+            EquityGrantMonth.run_id == run.id,
             EquityGrantMonth.period == period,
             EquityGrantMonth.employee_number == employee_number,
         )
     )
 
 
-def _row(row: GrantMonth) -> EquityGrantMonth:
+def department_subledger(session: Session, period: str, entity_code: str, department: str) -> Decimal:
+    """Net expense in the entity's currency for one department and month, from the latest run."""
+    run = latest_schedule_run(session)
+    if run is None:
+        return ZERO
+    rows = session.scalars(
+        select(EquityGrantMonth).where(
+            EquityGrantMonth.run_id == run.id,
+            EquityGrantMonth.period == period,
+            EquityGrantMonth.entity_code == entity_code,
+            EquityGrantMonth.department == department,
+        )
+    )
+    return sum((row.booked_net_expense or ZERO for row in rows), ZERO)
+
+
+# ---------------------------------------------------------------- the monthly draft
+
+
+def draft_equity(session: Session, period: str, actor: Actor) -> dict:
+    require(actor, JOURNAL_DRAFT, "draft equity journals")
+    parse_period(period)
+    if not world_loaded(session):
+        raise LedgerError("world_not_loaded", "Load the company file drops before drafting equity.", 409)
+    _require_open_books(session, period)
+    _withdraw_prior_drafts(session, period, actor)
+    run, rows = rebuild_schedules(session, period, actor)
+    window_start = first_loaded_period(session) or period
+    window = [row for row in rows if window_start <= row.period <= period]
+    unpriced = sorted({(row.period, row.currency, row.booking_currency) for row in window if row.booked_net_expense is None})
+    if unpriced:
+        first = unpriced[0]
+        raise LedgerError(
+            "missing_reference_rate",
+            f"No reference rate to translate {first[1]} into {first[2]} for {first[0]}. A person must supply it.",
+            422,
+        )
+
+    earned: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    for row in window:
+        earned[(row.entity_code, row.department)] += row.booked_net_expense
+    booked = _booked_stock_expense(session, window_start, period)
+    on_file: list[dict] = []
+    journals: list[JournalEntry] = []
+    for entity in ENTITIES:
+        differences = {
+            department: (earned.get((code, department), ZERO) - booked.get((code, department), ZERO)).quantize(CENT)
+            for (code, department) in set(earned) | set(booked)
+            if code == entity
+        }
+        entry = _trueup_journal(session, period, entity, differences, actor, on_file)
+        if entry is not None:
+            journals.append(entry)
+
+    this_month = [row for row in rows if row.period == period]
+    platform = list(session.scalars(select(EquitySnapshot).where(EquitySnapshot.period == period)))
+    signed = {grant.grant_number for grant in signed_grants(session)}
+    # A live true-up for an earlier month settled everything through that month, so the
+    # per-grant explanation only covers the months since.
+    explain_from = _month_after_last_trueup(session, period) or window_start
+    explain_from = max(explain_from, window_start)
+    unexplained = [row for row in window if row.period >= explain_from]
+    return {
+        "period": period,
+        "schedule_run": run.id,
+        "window_start": window_start,
+        "explained_from": explain_from,
+        "schedules": [as_dict(row) for row in this_month],
+        "trueup": _grant_breakdown(session, unexplained, explain_from, period, signed),
+        "notes": _notes(this_month, platform, signed),
+        "journals": journals,
+        "already_on_file": on_file,
+    }
+
+
+def _month_after_last_trueup(session: Session, period: str) -> str | None:
+    """The month after the latest earlier month with a live true-up, if any."""
+    rows = session.scalars(
+        select(JournalEntry)
+        .where(JournalEntry.booking_key.like("equity:trueup:%"), JournalEntry.status.in_(LIVE_STATUSES))
+        .options(selectinload(JournalEntry.period))
+    )
+    earlier = [period_label(entry.period) for entry in rows if period_label(entry.period) < period]
+    if not earlier:
+        return None
+    return add_months(f"{max(earlier)}-01", 1)[:7]
+
+
+def _booked_stock_expense(session: Session, start: str, end: str) -> dict[tuple[str, str], Decimal]:
+    """Account 5200, net debit, per entity and department, in every live entry from start through end."""
+    rows = session.execute(
+        select(JournalEntry, JournalLine, Period)
+        .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
+        .join(Period, Period.id == JournalEntry.period_id)
+        .join(Account, Account.id == JournalLine.account_id)
+        .where(Account.code == "5200", JournalEntry.status.in_(LIVE_STATUSES))
+        .options(selectinload(JournalEntry.entity))
+    )
+    totals: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    for entry, line, period_row in rows:
+        label = period_label(period_row)
+        if start <= label <= end:
+            totals[(entry.entity.code, line.department or "")] += line.debit - line.credit
+    return totals
+
+
+def _grant_breakdown(
+    session: Session, window: list[GrantMonth], start: str, end: str, signed: set[str]
+) -> list[dict]:
+    """Per grant: what the subledger earned against what the platform fed the ledger, over the window."""
+    earned: dict[tuple, Decimal] = defaultdict(lambda: ZERO)
+    names: dict[str, tuple[str, str]] = {}
+    statuses: dict[str, set[str]] = defaultdict(set)
+    approved: dict[str, bool] = {}
+    for row in window:
+        key = (row.grant_number, row.entity_code, row.department, row.booking_currency)
+        earned[key] += row.booked_net_expense
+        names[row.grant_number] = (row.employee_number, row.legal_name)
+        statuses[row.grant_number].add(row.status)
+        approved[row.grant_number] = row.board_approved
+    hr_entity = {(row.grant_number, row.period): row.entity_code for row in window}
+    fed: dict[tuple, Decimal] = defaultdict(lambda: ZERO)
+    wrong_entity: set[str] = set()
+    snapshots = session.scalars(
+        select(EquitySnapshot).where(EquitySnapshot.period >= start, EquitySnapshot.period <= end)
+    )
+    for snap in snapshots:
+        fed[(snap.grant_number, snap.entity_code, snap.department, snap.currency)] += snap.monthly_expense
+        names.setdefault(snap.grant_number, (snap.employee_number, snap.legal_name))
+        expected = hr_entity.get((snap.grant_number, snap.period))
+        if expected is not None and expected != snap.entity_code:
+            wrong_entity.add(snap.grant_number)
+    lines = []
+    for key in sorted(set(earned) | set(fed)):
+        difference = (earned.get(key, ZERO) - fed.get(key, ZERO)).quantize(CENT)
+        if difference == 0:
+            continue
+        grant_number, entity, department, currency = key
+        employee_number, legal_name = names[grant_number]
+        if grant_number not in signed:
+            reason, ask = "platform_grant_without_signed_grant", "morgan.li"
+        elif not approved.get(grant_number, True):
+            reason, ask = "missing_grant_approval", "morgan.li"
+        elif "forfeited" in statuses[grant_number]:
+            reason, ask = "forfeiture_still_expensed", "dana.ruiz"
+        elif grant_number in wrong_entity:
+            reason, ask = "expense_in_wrong_entity", "dana.ruiz"
+        else:
+            reason, ask = "platform_differs", "morgan.li"
+        lines.append(
+            {
+                "grant_number": grant_number,
+                "employee_number": employee_number,
+                "legal_name": legal_name,
+                "entity_code": entity,
+                "department": department,
+                "currency": currency,
+                "subledger": money_str(earned.get(key, ZERO)),
+                "platform_fed": money_str(fed.get(key, ZERO)),
+                "difference": money_str(difference),
+                "reason": reason,
+                "ask": ask,
+            }
+        )
+    return lines
+
+
+def _row(run_id: str, row: GrantMonth) -> EquityGrantMonth:
     return EquityGrantMonth(
+        run_id=run_id,
         grant_number=row.grant_number,
         employee_number=row.employee_number,
         legal_name=row.legal_name,
@@ -101,6 +366,9 @@ def _row(row: GrantMonth) -> EquityGrantMonth:
         board_approved=row.board_approved,
         vest_end=row.vest_end,
         cliff_end=row.cliff_end,
+        booking_currency=row.booking_currency,
+        fx_rate=row.fx_rate,
+        booked_net_expense=row.booked_net_expense,
     )
 
 
@@ -110,11 +378,11 @@ def _require_open_books(session: Session, period: str) -> None:
         row = find_period(session, entity, period)
         if row is None:
             raise LedgerError("period_not_open", f"Open {entity_code} {period} before drafting equity.", 422)
-        if row.status != "open":
+        if not row.accepts_entries:
             raise LedgerError("period_locked", f"{period} for {entity_code} is locked.", 409)
 
 
-def _clear_prior_drafts(session: Session, period: str, actor: Actor) -> None:
+def _withdraw_prior_drafts(session: Session, period: str, actor: Actor) -> None:
     year, month = parse_period(period)
     entries = session.scalars(
         select(JournalEntry)
@@ -126,14 +394,13 @@ def _clear_prior_drafts(session: Session, period: str, actor: Actor) -> None:
             JournalEntry.status == "draft",
             JournalEntry.memo.startswith(EQUITY_PREFIX),
         )
-        .options(selectinload(JournalEntry.lines))
     )
     for entry in entries:
-        session.delete(entry)
+        withdraw_draft(session, entry, actor, "Replaced by a new equity draft run.")
     session.commit()
 
 
-def _notes(rows: list[GrantMonth], platform: list[EquitySnapshot]) -> list[dict]:
+def _notes(rows: list[GrantMonth], platform: list[EquitySnapshot], signed: set[str]) -> list[dict]:
     by_grant = {row.grant_number: row for row in platform}
     notes: list[dict] = []
     for row in rows:
@@ -157,7 +424,7 @@ def _notes(rows: list[GrantMonth], platform: list[EquitySnapshot]) -> list[dict]
                     "employee_number": row.employee_number,
                     "legal_name": row.legal_name,
                     "reversal": money_str(row.reversal),
-                    "ask": "lee.park",
+                    "ask": "dana.ruiz",
                 }
             )
         if snap is not None and snap.vest_end != row.vest_end:
@@ -172,41 +439,65 @@ def _notes(rows: list[GrantMonth], platform: list[EquitySnapshot]) -> list[dict]
                     "ask": "morgan.li",
                 }
             )
-        if snap is not None and snap.monthly_expense != row.net_expense:
+        if snap is not None and snap.monthly_expense != row.booked_net_expense:
             notes.append(
                 {
                     "kind": "platform_differs",
                     "grant_number": row.grant_number,
                     "employee_number": row.employee_number,
                     "legal_name": row.legal_name,
-                    "subledger_net": money_str(row.net_expense),
+                    "subledger_net": money_str(row.booked_net_expense or ZERO),
                     "platform_expense": money_str(snap.monthly_expense),
+                    "ask": "morgan.li",
+                }
+            )
+    for snap in platform:
+        if snap.grant_number not in signed:
+            notes.append(
+                {
+                    "kind": "platform_grant_without_signed_grant",
+                    "grant_number": snap.grant_number,
+                    "employee_number": snap.employee_number,
+                    "legal_name": snap.legal_name,
                     "ask": "morgan.li",
                 }
             )
     return notes
 
 
-def _entity_journal(
+def _trueup_journal(
     session: Session,
     period: str,
     entity: str,
-    rows: list[GrantMonth],
+    differences: dict[str, Decimal],
     actor: Actor,
+    on_file: list[dict],
 ) -> JournalEntry | None:
     buckets: dict = {}
-    for row in [item for item in rows if item.entity_code == entity]:
-        _add_net(buckets, row.department, row.net_expense)
+    for department, net in differences.items():
+        _add_net(buckets, department, net)
     lines = _lines(buckets)
     if len(lines) < 2:
+        return None
+    booking_key = f"equity:trueup:{entity}:{period}"
+    live = live_entry_for_key(session, booking_key)
+    if live is not None:
+        on_file.append(
+            {
+                "booking_key": booking_key,
+                "journal": live.number,
+                "period": period_label(live.period),
+                "status": live.status,
+            }
+        )
         return None
     return draft_entry(
         session,
         {
             "entity_code": entity,
             "period": period,
-            "memo": f"{EQUITY_PREFIX} {entity} stock compensation for {month_of(period).label}",
-            "booking_key": f"equity:{entity}:{period}",
+            "memo": f"{EQUITY_PREFIX} {entity} stock compensation true-up through {month_of(period).label}",
+            "booking_key": booking_key,
             "lines": lines,
         },
         actor,

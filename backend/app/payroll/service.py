@@ -6,33 +6,36 @@ from sqlalchemy.orm import Session, selectinload
 from app.auth.identities import Actor
 from app.auth.permissions import JOURNAL_DRAFT, require
 from app.ledger.errors import LedgerError
+from app.ledger.chart import ENTITIES as ENTITY_ROWS
 from app.ledger.models import JournalEntry, JournalLine, Period
 from app.ledger.money import money_str
-from app.ledger.service import draft_entry, find_period, live_entry_for_key, parse_period, period_label, require_entity
+from app.ledger.service import (
+    draft_entry,
+    find_period,
+    live_entry_for_key,
+    parse_period,
+    period_label,
+    require_entity,
+    withdraw_draft,
+)
 from app.payroll.calc import accrue_wages, accrual_days, month_length, overpaid_gross, policy_contribution, quantize
+from app.periods import month_of, previous_period
 from app.policy.loader import load_policy
-from app.world.drops import ENTITIES, ENTITY_RATES, month_of
-from app.world.loader import WORLD_VERSION
-from app.world.models import FundingInstruction, HrCensusRow, PayrollRegisterRow, WorldLoad
+from app.world.loader import world_loaded
+from app.world.models import FundingInstruction, HrCensusRow, PayrollRegisterRow
 
 PAYROLL_PREFIX = "[Payroll]"
 ZERO = Decimal("0.00")
-
-
-def previous_period(period: str) -> str:
-    year, month = parse_period(period)
-    if month == 1:
-        return f"{year - 1:04d}-12"
-    return f"{year:04d}-{month - 1:02d}"
+ENTITIES = tuple(code for code, _name, _currency in ENTITY_ROWS)
 
 
 def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
     require(actor, JOURNAL_DRAFT, "draft payroll journals")
     parse_period(period)
-    if session.get(WorldLoad, WORLD_VERSION) is None:
+    if not world_loaded(session):
         raise LedgerError("world_not_loaded", "Load the company file drops before drafting payroll.", 409)
     _require_open_books(session, period)
-    _clear_prior_drafts(session, period, actor)
+    _withdraw_prior_drafts(session, period, actor)
     policy = load_policy()
     notes: list[dict] = []
     people: list[dict] = []
@@ -107,11 +110,11 @@ def _require_open_books(session: Session, period: str) -> None:
         row = find_period(session, entity, period)
         if row is None:
             raise LedgerError("period_not_open", f"Open {entity_code} {period} before drafting payroll.", 422)
-        if row.status != "open":
+        if not row.accepts_entries:
             raise LedgerError("period_locked", f"{period} for {entity_code} is locked.", 409)
 
 
-def _clear_prior_drafts(session: Session, period: str, actor: Actor) -> None:
+def _withdraw_prior_drafts(session: Session, period: str, actor: Actor) -> None:
     year, month = parse_period(period)
     entries = session.scalars(
         select(JournalEntry)
@@ -123,10 +126,9 @@ def _clear_prior_drafts(session: Session, period: str, actor: Actor) -> None:
             JournalEntry.status == "draft",
             JournalEntry.memo.startswith(PAYROLL_PREFIX),
         )
-        .options(selectinload(JournalEntry.lines))
     )
     for entry in entries:
-        session.delete(entry)
+        withdraw_draft(session, entry, actor, "Replaced by a new payroll draft run.")
     session.commit()
 
 
@@ -304,8 +306,8 @@ def _uk_accrual_journal(
         return None
     month = month_of(period)
     buckets: dict = {}
-    rates = ENTITY_RATES["UK"]
     policy = load_policy()
+    employer_tax = policy.employer_tax_rate("UK")
     for row in rows:
         days = accrual_days(row.pay_period_end, month.end)
         if days <= 0:
@@ -313,7 +315,7 @@ def _uk_accrual_journal(
         hr = _hr_for(hr_rows, row.employee_number)
         monthly = (hr.annual_salary / 12) if hr is not None else Decimal(row.gross_wages)
         wages = accrue_wages(monthly, days, month_length(month.end))
-        tax = quantize(wages * rates["employer_tax"])
+        tax = quantize(wages * employer_tax)
         contrib = policy_contribution(wages, policy.contribution_rate("UK"))
         department = row.department
         _add(buckets, "5000", department, wages, ZERO)
@@ -334,38 +336,22 @@ def _uk_accrual_journal(
 
 
 def _uk_accrual_reversal(session: Session, period: str, actor: Actor, on_file: list[dict]) -> JournalEntry | None:
+    """Reverse last month's UK accrual, line for line. Nothing to reverse if no accrual was booked."""
     prior = previous_period(period)
-    prior_pay = list(session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period == prior)))
-    if not prior_pay:
+    accrual = live_entry_for_key(session, f"payroll:uk_accrual:{prior}")
+    if accrual is None:
         return None
-    uk = [row for row in prior_pay if row.entity_code == "UK"]
-    hr_rows = list(session.scalars(select(HrCensusRow).where(HrCensusRow.period == prior)))
-    if not uk:
-        return None
-    month = month_of(prior)
+    lines = session.scalars(
+        select(JournalLine).where(JournalLine.entry_id == accrual.id).options(selectinload(JournalLine.account))
+    )
     buckets: dict = {}
-    rates = ENTITY_RATES["UK"]
-    policy = load_policy()
-    for row in uk:
-        days = accrual_days(row.pay_period_end, month.end)
-        if days <= 0:
-            continue
-        hr = _hr_for(hr_rows, row.employee_number)
-        monthly = (hr.annual_salary / 12) if hr is not None else Decimal(row.gross_wages)
-        wages = accrue_wages(monthly, days, month_length(month.end))
-        tax = quantize(wages * rates["employer_tax"])
-        contrib = policy_contribution(wages, policy.contribution_rate("UK"))
-        department = row.department
-        _add(buckets, "2150", None, wages, ZERO)
-        _add(buckets, "2160", None, tax + contrib, ZERO)
-        _add(buckets, "5000", department, ZERO, wages)
-        _add(buckets, "5100", department, ZERO, tax)
-        _add(buckets, "5110", department, ZERO, contrib)
+    for line in lines:
+        _add(buckets, line.account.code, line.department, line.credit, line.debit)
     return _post_draft(
         session,
         "UK",
         period,
-        f"UK accrual reversal from {month.label}",
+        f"UK accrual reversal from {month_of(prior).label}, reversing {accrual.number}",
         buckets,
         actor,
         f"payroll:uk_accrual_reversal:{prior}",

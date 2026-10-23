@@ -11,7 +11,7 @@ from app.db import get_db
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, Period
 from app.ledger.money import money_str
-from app.ledger.schemas import AccountOut, EntityOut, JournalIn, JournalOut, LineOut, PeriodOut, ReviewIn
+from app.ledger.schemas import AccountOut, EntityOut, JournalIn, JournalOut, LineOut, PeriodOut, ReopenIn, ReviewIn
 from app.ledger.service import (
     find_period,
     list_entries,
@@ -20,6 +20,7 @@ from app.ledger.service import (
     open_period,
     period_label,
     post_approved,
+    reopen_period,
     require_entity,
     review_entry,
 )
@@ -38,6 +39,8 @@ def period_out(row: Period) -> PeriodOut:
         period=period_label(row),
         status=row.status,
         locked_by=row.locked_by,
+        reopened_by=row.reopened_by,
+        reopen_reason=row.reopen_reason,
     )
 
 
@@ -104,6 +107,18 @@ def lock_entity_period(
     who: Actor = Depends(current_actor),
 ) -> PeriodOut:
     return period_out(lock_period(db, entity_code, period, who))
+
+
+@router.post("/entities/{entity_code}/periods/{period}/reopen", response_model=PeriodOut)
+def reopen_entity_period(
+    entity_code: str,
+    period: str,
+    body: ReopenIn,
+    db: Session = Depends(get_db),
+    who: Actor = Depends(current_actor),
+) -> PeriodOut:
+    """The controller reopens a closed month for a correction. Relock it when the correction posts."""
+    return period_out(reopen_period(db, entity_code, period, who, body.reason))
 
 
 @router.get("/entities/{entity_code}/periods/{period}", response_model=PeriodOut)

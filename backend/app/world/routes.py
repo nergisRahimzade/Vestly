@@ -12,7 +12,7 @@ from app.db import get_db
 from app.ledger.money import money_str
 from app.policy.loader import load_policy
 from app.world.access import individual_scope, log_access
-from app.world.loader import WORLD_VERSION, load_world
+from app.world.loader import WORLD_VERSION, load_drop, load_world
 from app.world.models import (
     BankLine,
     Department,
@@ -90,6 +90,12 @@ def summary(db: Session = Depends(get_db)) -> dict:
 def load(db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
     require(who, WORLD_LOAD, "load the company file drops")
     return load_world(db, who)
+
+
+@router.post("/drops")
+def receive_drop(drop: dict, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """A month's file drop arrives. Loading the same drop again changes nothing."""
+    return load_drop(db, drop, who)
 
 
 @router.get("/people")

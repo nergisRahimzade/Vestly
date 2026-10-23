@@ -33,7 +33,12 @@ def create_equity_drafts(
     result = draft_equity(db, period, who)
     return {
         "period": result["period"],
+        "schedule_run": result["schedule_run"],
+        "window_start": result["window_start"],
+        "explained_from": result["explained_from"],
         "notes": result["notes"],
+        "trueup": result["trueup"],
+        "already_on_file": result["already_on_file"],
         "schedules": result["schedules"],
         "journals": [
             {**journal_out(entry).model_dump(), "balanced": _balanced(entry)} for entry in result["journals"]

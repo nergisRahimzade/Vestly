@@ -6,6 +6,7 @@ from app.ledger.errors import LedgerError
 LEDGER_READ = "ledger.read"
 PERIOD_OPEN = "period.open"
 PERIOD_LOCK = "period.lock"
+PERIOD_REOPEN = "period.reopen"
 JOURNAL_DRAFT = "journal.draft"
 JOURNAL_REVIEW = "journal.review"
 JOURNAL_POST = "journal.post"
@@ -21,6 +22,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             LEDGER_READ,
             PERIOD_OPEN,
             PERIOD_LOCK,
+            PERIOD_REOPEN,
             JOURNAL_REVIEW,
             JOURNAL_POST,
             WORLD_LOAD,

@@ -102,7 +102,8 @@ def test_every_run_is_kept(client):
     assert second["run"]["ran_by"] == "dana.ruiz"
     assert first["run"]["inputs_hash"] == second["run"]["inputs_hash"]
     assert first["run"]["policy_hash"] == second["run"]["policy_hash"]
-    assert {doc["period"] for doc in first["run"]["input_documents"]} == {"2026-03", "2026-06"}
+    periods = {doc["period"] for doc in first["run"]["input_documents"]}
+    assert periods == {"static", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"}
 
     runs = client.get("/reconciliations/runs?period=2026-06", headers=AGENT).json()
     assert [run["sequence"] for run in runs] == [1, 2]

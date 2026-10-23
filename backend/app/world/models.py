@@ -160,3 +160,17 @@ class WorldLoad(Base):
 
     version: Mapped[str] = mapped_column(String(16), primary_key=True)
     loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DropLoad(Base):
+    """One month's file drop, as received. The rate card travels with it, so nothing reads fixture files later."""
+
+    __tablename__ = "drop_loads"
+
+    period: Mapped[str] = mapped_column(String(7), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_on: Mapped[str] = mapped_column(String(10), nullable=False)
+    closed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rate_card: Mapped[str] = mapped_column(String, nullable=False)
+    loaded_by: Mapped[str] = mapped_column(String(48), nullable=False)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

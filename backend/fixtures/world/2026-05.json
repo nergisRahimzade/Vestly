@@ -1,0 +1,1213 @@
+{
+  "period": "2026-05",
+  "description": "Synthetic Northlight file drop. People, account numbers, and amounts are fictional.",
+  "received_on": "2026-06-02",
+  "close_period": true,
+  "plants": [
+    "stale_vesting_flag:GR-US-003,GR-UK-003",
+    "unapproved_grant:GR-DE-001",
+    "contribution_rate_break:NL-UK-001",
+    "vesting_typo:GR-US-002"
+  ],
+  "rate_card": {
+    "us_401k_match_rate": "0.04",
+    "uk_pension_rate": "0.05",
+    "de_social_rate": "0.20",
+    "fx_band": "0.01",
+    "gbp_usd_reference": "1.2750",
+    "gbp_usd_reporting": "1.2700",
+    "eur_usd_reference": "1.0850"
+  },
+  "hr": [
+    {
+      "employee_number": "NL-US-001",
+      "legal_name": "Maya Chen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2022-04-04",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "180000.00",
+      "currency": "USD",
+      "bank_account": "1002003001",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-002",
+      "legal_name": "Jonah Hale",
+      "entity_code": "US",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2023-01-09",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "144000.00",
+      "currency": "USD",
+      "bank_account": "1002003002",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-003",
+      "legal_name": "Priya Shah",
+      "entity_code": "US",
+      "department": "Product",
+      "status": "terminated",
+      "hire_date": "2024-02-01",
+      "termination_date": "2026-03-12",
+      "termination_recorded_on": "2026-04-02",
+      "annual_salary": "180000.00",
+      "currency": "USD",
+      "bank_account": "1002003003",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-004",
+      "legal_name": "Evan Brooks",
+      "entity_code": "US",
+      "department": "GTM",
+      "status": "active",
+      "hire_date": "2023-06-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "120000.00",
+      "currency": "USD",
+      "bank_account": "1002003004",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-005",
+      "legal_name": "Riley Nguyen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2024-11-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "120000.00",
+      "currency": "USD",
+      "bank_account": "1002003005",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-UK-001",
+      "legal_name": "Amira Khan",
+      "entity_code": "UK",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2022-09-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "96000.00",
+      "currency": "GBP",
+      "bank_account": "2002003001",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-UK-002",
+      "legal_name": "Owen Blake",
+      "entity_code": "UK",
+      "department": "GTM",
+      "status": "active",
+      "hire_date": "2024-05-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "84000.00",
+      "currency": "GBP",
+      "bank_account": "2002003002",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-UK-003",
+      "legal_name": "Hannah Price",
+      "entity_code": "UK",
+      "department": "G&A",
+      "status": "terminated",
+      "hire_date": "2025-08-01",
+      "termination_date": "2026-01-15",
+      "termination_recorded_on": "2026-01-16",
+      "annual_salary": "78000.00",
+      "currency": "GBP",
+      "bank_account": "2002003003",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-DE-001",
+      "legal_name": "Lukas Weber",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2024-03-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "108000.00",
+      "currency": "EUR",
+      "bank_account": "3002003001",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-DE-002",
+      "legal_name": "Sofia Keller",
+      "entity_code": "DE",
+      "department": "Product",
+      "status": "active",
+      "hire_date": "2023-02-01",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "96000.00",
+      "currency": "EUR",
+      "bank_account": "3002003002",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-DE-003",
+      "legal_name": "Greta Hoffmann",
+      "entity_code": "DE",
+      "department": "G&A",
+      "status": "active",
+      "hire_date": "2025-01-06",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "90000.00",
+      "currency": "EUR",
+      "bank_account": "3002003003",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "status": "active",
+      "hire_date": "2024-06-03",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "132000.00",
+      "currency": "USD",
+      "bank_account": "1002003006",
+      "bank_routing": "111000025"
+    },
+    {
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "status": "active",
+      "hire_date": "2024-01-08",
+      "termination_date": null,
+      "termination_recorded_on": null,
+      "annual_salary": "102000.00",
+      "currency": "EUR",
+      "bank_account": "3002003004",
+      "bank_routing": "111000025"
+    }
+  ],
+  "payroll": [
+    {
+      "employee_number": "NL-US-001",
+      "legal_name": "Maya Chen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "15000.00",
+      "employee_withholdings": "3000.00",
+      "net_pay": "12000.00",
+      "employer_tax": "1200.00",
+      "employer_contribution": "600.00",
+      "currency": "USD",
+      "destination_account": "1002003001",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-US-002",
+      "legal_name": "Jonah Hale",
+      "entity_code": "US",
+      "department": "Engineering",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "12000.00",
+      "employee_withholdings": "2400.00",
+      "net_pay": "9600.00",
+      "employer_tax": "960.00",
+      "employer_contribution": "480.00",
+      "currency": "USD",
+      "destination_account": "1002003002",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-US-004",
+      "legal_name": "Evan Brooks",
+      "entity_code": "US",
+      "department": "GTM",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "10000.00",
+      "employee_withholdings": "2000.00",
+      "net_pay": "8000.00",
+      "employer_tax": "800.00",
+      "employer_contribution": "400.00",
+      "currency": "USD",
+      "destination_account": "1002003004",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-US-005",
+      "legal_name": "Riley Nguyen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "10000.00",
+      "employee_withholdings": "2000.00",
+      "net_pay": "8000.00",
+      "employer_tax": "800.00",
+      "employer_contribution": "400.00",
+      "currency": "USD",
+      "destination_account": "1002003005",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-UK-001",
+      "legal_name": "Amira Khan",
+      "entity_code": "UK",
+      "department": "Engineering",
+      "pay_period_start": "2026-04-26",
+      "pay_period_end": "2026-05-25",
+      "gross_wages": "8000.00",
+      "employee_withholdings": "1600.00",
+      "net_pay": "6400.00",
+      "employer_tax": "800.00",
+      "employer_contribution": "240.00",
+      "currency": "GBP",
+      "destination_account": "2002003001",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-UK-002",
+      "legal_name": "Owen Blake",
+      "entity_code": "UK",
+      "department": "GTM",
+      "pay_period_start": "2026-04-26",
+      "pay_period_end": "2026-05-25",
+      "gross_wages": "7000.00",
+      "employee_withholdings": "1400.00",
+      "net_pay": "5600.00",
+      "employer_tax": "700.00",
+      "employer_contribution": "350.00",
+      "currency": "GBP",
+      "destination_account": "2002003002",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-DE-001",
+      "legal_name": "Lukas Weber",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "9000.00",
+      "employee_withholdings": "2250.00",
+      "net_pay": "6750.00",
+      "employer_tax": "0.00",
+      "employer_contribution": "1800.00",
+      "currency": "EUR",
+      "destination_account": "3002003001",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-DE-002",
+      "legal_name": "Sofia Keller",
+      "entity_code": "DE",
+      "department": "Product",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "8000.00",
+      "employee_withholdings": "2000.00",
+      "net_pay": "6000.00",
+      "employer_tax": "0.00",
+      "employer_contribution": "1600.00",
+      "currency": "EUR",
+      "destination_account": "3002003002",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-DE-003",
+      "legal_name": "Greta Hoffmann",
+      "entity_code": "DE",
+      "department": "G&A",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "7500.00",
+      "employee_withholdings": "1875.00",
+      "net_pay": "5625.00",
+      "employer_tax": "0.00",
+      "employer_contribution": "1500.00",
+      "currency": "EUR",
+      "destination_account": "3002003003",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "11000.00",
+      "employee_withholdings": "2200.00",
+      "net_pay": "8800.00",
+      "employer_tax": "880.00",
+      "employer_contribution": "440.00",
+      "currency": "USD",
+      "destination_account": "1002003006",
+      "retro_effective_date": null,
+      "retro_gross": null
+    },
+    {
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "pay_period_start": "2026-05-01",
+      "pay_period_end": "2026-05-31",
+      "gross_wages": "8500.00",
+      "employee_withholdings": "2125.00",
+      "net_pay": "6375.00",
+      "employer_tax": "0.00",
+      "employer_contribution": "1700.00",
+      "currency": "EUR",
+      "destination_account": "3002003004",
+      "retro_effective_date": null,
+      "retro_gross": null
+    }
+  ],
+  "funding": [
+    {
+      "payment_id": "PAY-2026-05-NL-US-001",
+      "employee_number": "NL-US-001",
+      "legal_name": "Maya Chen",
+      "entity_code": "US",
+      "amount": "12000.00",
+      "currency": "USD",
+      "destination_account": "1002003001",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-US-002",
+      "employee_number": "NL-US-002",
+      "legal_name": "Jonah Hale",
+      "entity_code": "US",
+      "amount": "9600.00",
+      "currency": "USD",
+      "destination_account": "1002003002",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-US-004",
+      "employee_number": "NL-US-004",
+      "legal_name": "Evan Brooks",
+      "entity_code": "US",
+      "amount": "8000.00",
+      "currency": "USD",
+      "destination_account": "1002003004",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-US-005",
+      "employee_number": "NL-US-005",
+      "legal_name": "Riley Nguyen",
+      "entity_code": "US",
+      "amount": "8000.00",
+      "currency": "USD",
+      "destination_account": "1002003005",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-UK-001",
+      "employee_number": "NL-UK-001",
+      "legal_name": "Amira Khan",
+      "entity_code": "UK",
+      "amount": "6400.00",
+      "currency": "GBP",
+      "destination_account": "2002003001",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-UK-002",
+      "employee_number": "NL-UK-002",
+      "legal_name": "Owen Blake",
+      "entity_code": "UK",
+      "amount": "5600.00",
+      "currency": "GBP",
+      "destination_account": "2002003002",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-DE-001",
+      "employee_number": "NL-DE-001",
+      "legal_name": "Lukas Weber",
+      "entity_code": "DE",
+      "amount": "6750.00",
+      "currency": "EUR",
+      "destination_account": "3002003001",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-DE-002",
+      "employee_number": "NL-DE-002",
+      "legal_name": "Sofia Keller",
+      "entity_code": "DE",
+      "amount": "6000.00",
+      "currency": "EUR",
+      "destination_account": "3002003002",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-DE-003",
+      "employee_number": "NL-DE-003",
+      "legal_name": "Greta Hoffmann",
+      "entity_code": "DE",
+      "amount": "5625.00",
+      "currency": "EUR",
+      "destination_account": "3002003003",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-US-006",
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "amount": "8800.00",
+      "currency": "USD",
+      "destination_account": "1002003006",
+      "kind": "net_pay",
+      "cleared": true
+    },
+    {
+      "payment_id": "PAY-2026-05-NL-DE-004",
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "amount": "6375.00",
+      "currency": "EUR",
+      "destination_account": "3002003004",
+      "kind": "net_pay",
+      "cleared": true
+    }
+  ],
+  "equity": [
+    {
+      "grant_number": "GR-US-001",
+      "employee_number": "NL-US-001",
+      "legal_name": "Maya Chen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 4800,
+      "fair_value": "48000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "1000.00"
+    },
+    {
+      "grant_number": "GR-US-002",
+      "employee_number": "NL-US-002",
+      "legal_name": "Jonah Hale",
+      "entity_code": "US",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2027-03-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-US-003",
+      "employee_number": "NL-US-003",
+      "legal_name": "Priya Shah",
+      "entity_code": "US",
+      "department": "Product",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 4800,
+      "fair_value": "48000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "1000.00"
+    },
+    {
+      "grant_number": "GR-US-004",
+      "employee_number": "NL-US-004",
+      "legal_name": "Evan Brooks",
+      "entity_code": "US",
+      "department": "GTM",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-US-005",
+      "employee_number": "NL-US-005",
+      "legal_name": "Riley Nguyen",
+      "entity_code": "US",
+      "department": "Engineering",
+      "grant_date": "2024-11-01",
+      "cliff_end": "2025-11-01",
+      "vest_end": "2028-11-01",
+      "shares": 3600,
+      "fair_value": "36000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-11-01",
+      "platform_status": "vesting",
+      "monthly_expense": "750.00"
+    },
+    {
+      "grant_number": "GR-UK-001",
+      "employee_number": "NL-UK-001",
+      "legal_name": "Amira Khan",
+      "entity_code": "UK",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 4800,
+      "fair_value": "48000.00",
+      "currency": "GBP",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "1000.00"
+    },
+    {
+      "grant_number": "GR-UK-002",
+      "employee_number": "NL-UK-002",
+      "legal_name": "Owen Blake",
+      "entity_code": "UK",
+      "department": "GTM",
+      "grant_date": "2024-05-01",
+      "cliff_end": "2025-05-01",
+      "vest_end": "2028-05-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "GBP",
+      "board_approved": true,
+      "board_approval_date": "2024-05-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-UK-003",
+      "employee_number": "NL-UK-003",
+      "legal_name": "Hannah Price",
+      "entity_code": "UK",
+      "department": "G&A",
+      "grant_date": "2025-08-01",
+      "cliff_end": "2026-08-01",
+      "vest_end": "2029-08-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "GBP",
+      "board_approved": true,
+      "board_approval_date": "2025-08-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-DE-001",
+      "employee_number": "NL-DE-001",
+      "legal_name": "Lukas Weber",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 4800,
+      "fair_value": "48000.00",
+      "currency": "EUR",
+      "board_approved": false,
+      "board_approval_date": null,
+      "platform_status": "vesting",
+      "monthly_expense": "1000.00"
+    },
+    {
+      "grant_number": "GR-DE-002",
+      "employee_number": "NL-DE-002",
+      "legal_name": "Sofia Keller",
+      "entity_code": "DE",
+      "department": "Product",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "EUR",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-DE-003",
+      "employee_number": "NL-DE-003",
+      "legal_name": "Greta Hoffmann",
+      "entity_code": "DE",
+      "department": "G&A",
+      "grant_date": "2025-01-06",
+      "cliff_end": "2026-01-06",
+      "vest_end": "2029-01-06",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "EUR",
+      "board_approved": true,
+      "board_approval_date": "2025-01-06",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-US-006",
+      "employee_number": "NL-US-006",
+      "legal_name": "Nadia Rossi",
+      "entity_code": "US",
+      "department": "Product",
+      "grant_date": "2024-06-03",
+      "cliff_end": "2025-06-03",
+      "vest_end": "2028-06-03",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "USD",
+      "board_approved": true,
+      "board_approval_date": "2024-06-03",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    },
+    {
+      "grant_number": "GR-DE-004",
+      "employee_number": "NL-DE-004",
+      "legal_name": "Tomas Fischer",
+      "entity_code": "DE",
+      "department": "Engineering",
+      "grant_date": "2024-03-01",
+      "cliff_end": "2025-03-01",
+      "vest_end": "2028-03-01",
+      "shares": 2400,
+      "fair_value": "24000.00",
+      "currency": "EUR",
+      "board_approved": true,
+      "board_approval_date": "2024-03-01",
+      "platform_status": "vesting",
+      "monthly_expense": "500.00"
+    }
+  ],
+  "bank": [
+    {
+      "entity_code": "US",
+      "posted_on": "2026-05-31",
+      "amount": "12000.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-05-NL-US-001",
+      "description": "Net pay Maya Chen PAY-2026-05-NL-US-001",
+      "destination_account": "1002003001"
+    },
+    {
+      "entity_code": "US",
+      "posted_on": "2026-05-31",
+      "amount": "9600.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-05-NL-US-002",
+      "description": "Net pay Jonah Hale PAY-2026-05-NL-US-002",
+      "destination_account": "1002003002"
+    },
+    {
+      "entity_code": "US",
+      "posted_on": "2026-05-31",
+      "amount": "8000.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-05-NL-US-004",
+      "description": "Net pay Evan Brooks PAY-2026-05-NL-US-004",
+      "destination_account": "1002003004"
+    },
+    {
+      "entity_code": "US",
+      "posted_on": "2026-05-31",
+      "amount": "8000.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-05-NL-US-005",
+      "description": "Net pay Riley Nguyen PAY-2026-05-NL-US-005",
+      "destination_account": "1002003005"
+    },
+    {
+      "entity_code": "UK",
+      "posted_on": "2026-05-31",
+      "amount": "6400.00",
+      "currency": "GBP",
+      "payment_id": "PAY-2026-05-NL-UK-001",
+      "description": "Net pay Amira Khan PAY-2026-05-NL-UK-001",
+      "destination_account": "2002003001"
+    },
+    {
+      "entity_code": "UK",
+      "posted_on": "2026-05-31",
+      "amount": "5600.00",
+      "currency": "GBP",
+      "payment_id": "PAY-2026-05-NL-UK-002",
+      "description": "Net pay Owen Blake PAY-2026-05-NL-UK-002",
+      "destination_account": "2002003002"
+    },
+    {
+      "entity_code": "DE",
+      "posted_on": "2026-05-31",
+      "amount": "6750.00",
+      "currency": "EUR",
+      "payment_id": "PAY-2026-05-NL-DE-001",
+      "description": "Net pay Lukas Weber PAY-2026-05-NL-DE-001",
+      "destination_account": "3002003001"
+    },
+    {
+      "entity_code": "DE",
+      "posted_on": "2026-05-31",
+      "amount": "6000.00",
+      "currency": "EUR",
+      "payment_id": "PAY-2026-05-NL-DE-002",
+      "description": "Net pay Sofia Keller PAY-2026-05-NL-DE-002",
+      "destination_account": "3002003002"
+    },
+    {
+      "entity_code": "DE",
+      "posted_on": "2026-05-31",
+      "amount": "5625.00",
+      "currency": "EUR",
+      "payment_id": "PAY-2026-05-NL-DE-003",
+      "description": "Net pay Greta Hoffmann PAY-2026-05-NL-DE-003",
+      "destination_account": "3002003003"
+    },
+    {
+      "entity_code": "US",
+      "posted_on": "2026-05-31",
+      "amount": "8800.00",
+      "currency": "USD",
+      "payment_id": "PAY-2026-05-NL-US-006",
+      "description": "Net pay Nadia Rossi PAY-2026-05-NL-US-006",
+      "destination_account": "1002003006"
+    },
+    {
+      "entity_code": "DE",
+      "posted_on": "2026-05-31",
+      "amount": "6375.00",
+      "currency": "EUR",
+      "payment_id": "PAY-2026-05-NL-DE-004",
+      "description": "Net pay Tomas Fischer PAY-2026-05-NL-DE-004",
+      "destination_account": "3002003004"
+    }
+  ],
+  "documents": [
+    {
+      "system": "rate_card",
+      "title": "Employer contribution rate card",
+      "body": "Northlight employer contribution rates. Account numbers and people are synthetic.\nUS 401(k) match: 4% of gross wages.\nUK employer pension: 5% of gross wages.\nGermany employer social contributions: 20% of gross wages.\nA GBP to USD rate within 1% of the reference rate is an explained difference.\nReference GBPUSD 1.2750. Management pack used 1.2700.\nReference EURUSD 1.0850.\n"
+    }
+  ],
+  "ledger_entries": [
+    {
+      "entity_code": "US",
+      "kind": "payroll",
+      "memo": "US payroll for May 2026, as already booked",
+      "lines": [
+        {
+          "account_code": "5000",
+          "department": "Engineering",
+          "debit": "37000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5000",
+          "department": "GTM",
+          "debit": "10000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5000",
+          "department": "Product",
+          "debit": "11000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5100",
+          "department": "Engineering",
+          "debit": "2960.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5100",
+          "department": "GTM",
+          "debit": "800.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5100",
+          "department": "Product",
+          "debit": "880.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "Engineering",
+          "debit": "1480.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "GTM",
+          "debit": "400.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "Product",
+          "debit": "440.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "0.00",
+          "credit": "46400.00"
+        },
+        {
+          "account_code": "2200",
+          "department": null,
+          "debit": "0.00",
+          "credit": "11600.00"
+        },
+        {
+          "account_code": "2210",
+          "department": null,
+          "debit": "0.00",
+          "credit": "4640.00"
+        },
+        {
+          "account_code": "2220",
+          "department": null,
+          "debit": "0.00",
+          "credit": "2320.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "US",
+      "kind": "bank",
+      "memo": "US net pay cleared in May 2026, per bank",
+      "lines": [
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "46400.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "1000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "46400.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "US",
+      "kind": "equity",
+      "memo": "US stock compensation for May 2026, fed by the equity platform",
+      "lines": [
+        {
+          "account_code": "5200",
+          "department": "Engineering",
+          "debit": "2250.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "GTM",
+          "debit": "500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "Product",
+          "debit": "1500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "3000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "4250.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "UK",
+      "kind": "payroll",
+      "memo": "UK payroll for May 2026, as already booked",
+      "lines": [
+        {
+          "account_code": "5000",
+          "department": "Engineering",
+          "debit": "8000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5000",
+          "department": "GTM",
+          "debit": "7000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5100",
+          "department": "Engineering",
+          "debit": "800.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5100",
+          "department": "GTM",
+          "debit": "700.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "Engineering",
+          "debit": "240.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "GTM",
+          "debit": "350.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "0.00",
+          "credit": "12000.00"
+        },
+        {
+          "account_code": "2200",
+          "department": null,
+          "debit": "0.00",
+          "credit": "3000.00"
+        },
+        {
+          "account_code": "2210",
+          "department": null,
+          "debit": "0.00",
+          "credit": "1500.00"
+        },
+        {
+          "account_code": "2220",
+          "department": null,
+          "debit": "0.00",
+          "credit": "590.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "UK",
+      "kind": "bank",
+      "memo": "UK net pay cleared in May 2026, per bank",
+      "lines": [
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "12000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "1000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "12000.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "UK",
+      "kind": "equity",
+      "memo": "UK stock compensation for May 2026, fed by the equity platform",
+      "lines": [
+        {
+          "account_code": "5200",
+          "department": "Engineering",
+          "debit": "1000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "G&A",
+          "debit": "500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "GTM",
+          "debit": "500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "3000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "2000.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "DE",
+      "kind": "payroll",
+      "memo": "DE payroll for May 2026, as already booked",
+      "lines": [
+        {
+          "account_code": "5000",
+          "department": "Engineering",
+          "debit": "17500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5000",
+          "department": "G&A",
+          "debit": "7500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5000",
+          "department": "Product",
+          "debit": "8000.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "Engineering",
+          "debit": "3500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "G&A",
+          "debit": "1500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5110",
+          "department": "Product",
+          "debit": "1600.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "0.00",
+          "credit": "24750.00"
+        },
+        {
+          "account_code": "2200",
+          "department": null,
+          "debit": "0.00",
+          "credit": "8250.00"
+        },
+        {
+          "account_code": "2220",
+          "department": null,
+          "debit": "0.00",
+          "credit": "6600.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "DE",
+      "kind": "bank",
+      "memo": "DE net pay cleared in May 2026, per bank",
+      "lines": [
+        {
+          "account_code": "2100",
+          "department": null,
+          "debit": "24750.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "1000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "24750.00"
+        }
+      ]
+    },
+    {
+      "entity_code": "DE",
+      "kind": "equity",
+      "memo": "DE stock compensation for May 2026, fed by the equity platform",
+      "lines": [
+        {
+          "account_code": "5200",
+          "department": "Engineering",
+          "debit": "1500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "G&A",
+          "debit": "500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "5200",
+          "department": "Product",
+          "debit": "500.00",
+          "credit": "0.00"
+        },
+        {
+          "account_code": "3000",
+          "department": null,
+          "debit": "0.00",
+          "credit": "2500.00"
+        }
+      ]
+    }
+  ]
+}

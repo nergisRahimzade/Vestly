@@ -3,8 +3,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.ledger.money import CENT, money_str
-from app.world.drops import ENTITY_RATES
+from app.ledger.money import CENT
 
 
 def quantize(amount: Decimal) -> Decimal:
@@ -13,22 +12,6 @@ def quantize(amount: Decimal) -> Decimal:
 
 def policy_contribution(gross: Decimal, rate: Decimal) -> Decimal:
     return quantize(gross * rate)
-
-
-def riley_hand_calc() -> dict[str, str]:
-    """Riley Nguyen, US Engineering, June. Gross 10000.00."""
-    gross = Decimal("10000.00")
-    rates = ENTITY_RATES["US"]
-    withholding = quantize(gross * rates["withholding"])
-    tax = quantize(gross * rates["employer_tax"])
-    contribution = policy_contribution(gross, rates["contribution"])
-    return {
-        "gross_wages": money_str(gross),
-        "employee_withholdings": money_str(withholding),
-        "net_pay": money_str(gross - withholding),
-        "employer_tax": money_str(tax),
-        "employer_contribution": money_str(contribution),
-    }
 
 
 def overpaid_gross(register_gross: Decimal, paid_from: str, paid_through: str, termination_date: str) -> Decimal:

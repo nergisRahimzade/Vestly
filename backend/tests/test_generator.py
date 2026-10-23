@@ -46,7 +46,7 @@ def test_a_bad_period_is_refused():
 
 
 def test_a_clean_month_has_no_anomalies():
-    april = build_drop("2026-04")
+    april = build_drop("2026-04", plants=[], closed=False)
     assert april["plants"] == []
     assert april["close_period"] is False
     assert not [doc for doc in april["documents"] if doc["system"] == "email"]

@@ -8,36 +8,34 @@ from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
 from app.equity.models import EquityGrantMonth
-from app.equity.service import grant_month, rebuild_schedules
+from app.equity.service import department_subledger, grant_month, rebuild_schedules
 from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.ledger.service import parse_period
 from app.policy.loader import Policy, load_policy
 from app.reconcile.models import Reconciliation, ReconciliationRun
-from app.world.drops import fixture_dir
-from app.world.loader import WORLD_VERSION
+from app.world.loader import rate_card_for, world_loaded
 from app.world.models import (
     EquitySnapshot,
     HrCensusRow,
     LedgerExportLine,
     PayrollRegisterRow,
     SourceDocument,
-    WorldLoad,
 )
 
 
 def reconcile_period(session: Session, period: str, actor: Actor) -> tuple[ReconciliationRun, list[Reconciliation]]:
     """Run the reconciler and keep the result as a new run. Earlier runs are left as they were."""
     parse_period(period)
-    if session.get(WorldLoad, WORLD_VERSION) is None:
+    if not world_loaded(session):
         raise LedgerError("world_not_loaded", "Load the company file drops before reconciling.", 409)
-    drop_path = fixture_dir() / f"{period}.json"
-    if not drop_path.exists():
+    rate_card = rate_card_for(session, period)
+    if rate_card is None:
         raise LedgerError("period_not_loaded", f"No file drop is loaded for {period}.", 404)
     policy = load_policy()
-    rebuild_schedules(session, period)
+    rebuild_schedules(session, period, actor)
     run = _start_run(session, period, actor, policy)
-    findings = _employment_findings(session, period, policy) + [_fx_finding(period, policy)]
+    findings = _employment_findings(session, period, policy) + [_fx_finding(period, policy, rate_card)]
     for finding in findings:
         finding.run_id = run.id
     session.add_all(findings)
@@ -55,10 +53,12 @@ def latest_run(session: Session, period: str) -> ReconciliationRun | None:
 
 
 def _start_run(session: Session, period: str, actor: Actor, policy: Policy) -> ReconciliationRun:
-    # The reconciler reads this month and every earlier month, so all of them are its inputs.
+    # The reconciler reads this month, every earlier month, and the signed grants, so all of them are its inputs.
     documents = list(
         session.scalars(
-            select(SourceDocument).where(SourceDocument.period <= period).order_by(SourceDocument.content_hash)
+            select(SourceDocument)
+            .where((SourceDocument.period <= period) | (SourceDocument.period == "static"))
+            .order_by(SourceDocument.content_hash)
         )
     )
     inputs = [{"title": row.title, "period": row.period, "content_hash": row.content_hash} for row in documents]
@@ -105,7 +105,7 @@ def _employment_findings(session: Session, period: str, policy: Policy) -> list[
         )
         subledger = grant_month(session, period, hr.employee_number)
         ledger_line = _stock_expense_line(session, period, hr.entity_code, hr.department)
-        department_net = _department_subledger(session, period, hr.entity_code, hr.department)
+        department_net = department_subledger(session, period, hr.entity_code, hr.department)
         latest = max(payroll_rows, key=lambda row: row.pay_period_end) if payroll_rows else None
         payroll_disagrees = latest is not None and latest.pay_period_end > hr.termination_date
         equity_disagrees = _equity_disagrees(equity, subledger)
@@ -150,10 +150,8 @@ def _employment_findings(session: Session, period: str, policy: Policy) -> list[
     return findings
 
 
-def _fx_finding(period: str, policy: Policy) -> Reconciliation:
+def _fx_finding(period: str, policy: Policy, card: dict) -> Reconciliation:
     fact = policy.fact("gbp_usd_translation")
-    drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
-    card = drop["rate_card"]
     reference = Decimal(card["gbp_usd_reference"])
     used = Decimal(card["gbp_usd_reporting"])
     gap = abs(reference - used) / reference
@@ -210,21 +208,10 @@ def _payroll_claim(latest: PayrollRegisterRow | None) -> str:
     )
 
 
-def _department_subledger(session: Session, period: str, entity_code: str, department: str) -> Decimal:
-    rows = session.scalars(
-        select(EquityGrantMonth).where(
-            EquityGrantMonth.period == period,
-            EquityGrantMonth.entity_code == entity_code,
-            EquityGrantMonth.department == department,
-        )
-    )
-    return sum((row.net_expense for row in rows), Decimal("0.00"))
-
-
 def _equity_disagrees(equity: EquitySnapshot | None, subledger: EquityGrantMonth | None) -> bool:
     if equity is not None and equity.platform_status == "vesting" and equity.monthly_expense > 0:
         return True
-    if equity is not None and subledger is not None and equity.monthly_expense != subledger.net_expense:
+    if equity is not None and subledger is not None and equity.monthly_expense != subledger.booked_net_expense:
         return True
     return False
 
@@ -246,7 +233,8 @@ def _equity_claim(equity: EquitySnapshot | None, subledger: EquityGrantMonth | N
         return platform
     return (
         f"{platform} Subledger {subledger.grant_number} status {subledger.status}, "
-        f"net_expense {money_str(subledger.net_expense)} {subledger.currency}."
+        f"net_expense {money_str(subledger.booked_net_expense or subledger.net_expense)} "
+        f"{subledger.booking_currency}."
     )
 
 
@@ -268,7 +256,7 @@ def _ledger_claim(
     if subledger is not None:
         grant = (
             f" Grant {subledger.grant_number} subledger net "
-            f"{money_str(subledger.net_expense)} {subledger.currency}."
+            f"{money_str(subledger.booked_net_expense or subledger.net_expense)} {subledger.booking_currency}."
         )
     return f"{booked} Subledger {entity_code} {department} totals {money_str(department_net)}.{grant}"
 

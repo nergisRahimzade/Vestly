@@ -1,19 +1,22 @@
-"""Grant-date fair value, straight-line over 48 months, forfeitures when they occur.
+"""Grant-date fair value, straight-line over the service period, forfeitures when they occur.
 
 The signed grant is the authority for terms. HR is the authority for who still works
-where. The equity platform is checked, not trusted.
+where. The equity platform is checked, not trusted. Everything here works on facts
+the caller read from the database; nothing comes from the world generator.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 
+from app.ledger.chart import ENTITIES
 from app.ledger.money import CENT, money_str
-from app.world.drops import VEST_MONTHS, assignment, month_of, months_between, person_by_number
+from app.periods import iter_periods, month_of, months_between
 
 CLIFF_MONTHS = 12
+CURRENCY = {code: currency for code, _name, currency in ENTITIES}
+RATE_PLACES = Decimal("0.000001")
 
 
 @dataclass(frozen=True)
@@ -21,15 +24,37 @@ class SignedGrant:
     grant_number: str
     employee_number: str
     legal_name: str
+    home_entity: str
     grant_date: str
     cliff_end: str
     vest_end: str
+    service_months: int
     shares: int
     fair_value: Decimal
     currency: str
     board_approved: bool
     board_approval_date: str | None
-    body: str
+    content_hash: str | None
+
+
+@dataclass(frozen=True)
+class EmployeeFacts:
+    """What HR has recorded about one person, as of the month being closed."""
+
+    employee_number: str
+    legal_name: str
+    hire_date: str
+    termination_date: str | None
+    # (period, entity, department), one per month HR reported, oldest first
+    assignments: tuple[tuple[str, str, str], ...]
+
+    def assignment(self, period: str) -> tuple[str, str]:
+        """HR's entity and department for a month. Before HR's first file, the first known assignment."""
+        chosen = self.assignments[0]
+        for row in self.assignments:
+            if row[0] <= period:
+                chosen = row
+        return chosen[1], chosen[2]
 
 
 @dataclass(frozen=True)
@@ -52,9 +77,12 @@ class GrantMonth:
     board_approved: bool
     vest_end: str
     cliff_end: str
+    booking_currency: str
+    fx_rate: Decimal | None
+    booked_net_expense: Decimal | None
 
 
-def parse_signed_grant(text: str) -> SignedGrant:
+def parse_signed_grant(text: str, content_hash: str | None = None) -> SignedGrant:
     lines = {line.split(":", 1)[0].strip(): line.split(":", 1)[1].strip() for line in text.splitlines() if ":" in line}
     grant_number = text.splitlines()[0].rsplit(" ", 1)[-1]
     legal_name, number = lines["Employee"].rsplit(" (", 1)
@@ -65,52 +93,58 @@ def parse_signed_grant(text: str) -> SignedGrant:
         grant_number=grant_number,
         employee_number=number.rstrip(")"),
         legal_name=legal_name,
+        home_entity=lines["Home entity"].split()[0],
         grant_date=lines["Grant date"],
         cliff_end=lines["Cliff end"],
         vest_end=lines["Vest end"],
+        service_months=int(lines["Service period"].split()[0]),
         shares=int(lines["Shares"]),
         fair_value=Decimal(value),
         currency=currency,
         board_approved=approved,
         board_approval_date=approval.split(",", 1)[1].strip() if approved and "," in approval else None,
-        body=text,
+        content_hash=content_hash,
     )
 
 
-def load_signed_grants(directory: Path) -> list[SignedGrant]:
-    return [parse_signed_grant(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.txt"))]
+def translation_rate(from_currency: str, to_currency: str, rate_card: dict | None) -> Decimal | None:
+    """Units of to_currency per unit of from_currency, through each currency's USD reference rate."""
+    if from_currency == to_currency:
+        return Decimal("1")
+    if rate_card is None:
+        return None
+
+    def to_usd(currency: str) -> Decimal | None:
+        if currency == "USD":
+            return Decimal("1")
+        value = rate_card.get(f"{currency.lower()}_usd_reference")
+        return Decimal(value) if value is not None else None
+
+    source, target = to_usd(from_currency), to_usd(to_currency)
+    if source is None or target is None:
+        return None
+    return (source / target).quantize(RATE_PLACES)
 
 
-def iter_periods(start: str, end: str) -> list[str]:
-    year, month = int(start[:4]), int(start[5:7])
-    end_year, end_month = int(end[:4]), int(end[5:7])
-    periods = []
-    while (year, month) <= (end_year, end_month):
-        periods.append(f"{year:04d}-{month:02d}")
-        month += 1
-        if month == 13:
-            year, month = year + 1, 1
-    return periods
-
-
-def monthly_straight_line(fair_value: Decimal) -> Decimal:
-    return (fair_value / VEST_MONTHS).quantize(CENT)
-
-
-def vested_shares(shares: int, service_month: int) -> int:
+def vested_shares(shares: int, service_month: int, service_months: int) -> int:
     if service_month < CLIFF_MONTHS:
         return 0
-    if service_month >= VEST_MONTHS:
+    if service_month >= service_months:
         return shares
     cliff = shares // 4
     rest = shares - cliff
     after_cliff = service_month - CLIFF_MONTHS
-    return cliff + rest * after_cliff // (VEST_MONTHS - CLIFF_MONTHS)
+    return cliff + rest * after_cliff // (service_months - CLIFF_MONTHS)
 
 
-def schedule_for(grant: SignedGrant, through_period: str) -> list[GrantMonth]:
-    person = person_by_number(grant.employee_number)
-    monthly = monthly_straight_line(grant.fair_value)
+def schedule_for(
+    grant: SignedGrant,
+    through_period: str,
+    facts: EmployeeFacts,
+    rate_cards: dict[str, dict] | None = None,
+) -> list[GrantMonth]:
+    rate_cards = rate_cards or {}
+    monthly = (grant.fair_value / grant.service_months).quantize(CENT)
     cumulative = Decimal("0.00")
     status = "pending_approval"
     vested = 0
@@ -118,11 +152,11 @@ def schedule_for(grant: SignedGrant, through_period: str) -> list[GrantMonth]:
     for period in iter_periods(grant.grant_date[:7], through_period):
         month = month_of(period)
         service_month = months_between(grant.grant_date, month) + 1
-        entity, department, _, currency = assignment(person, month)
+        entity, department = facts.assignment(period)
         expense = Decimal("0.00")
         reversal = Decimal("0.00")
-        serving = _serving(person, period)
-        ended_this_month = _forfeiture_month(person, period)
+        serving = _serving(facts, period)
+        ended_this_month = _forfeiture_month(facts, period)
 
         if not grant.board_approved:
             status = "pending_approval"
@@ -133,9 +167,9 @@ def schedule_for(grant: SignedGrant, through_period: str) -> list[GrantMonth]:
             vested = grant.shares
             cumulative = grant.fair_value
         else:
-            expense = monthly if service_month <= VEST_MONTHS else Decimal("0.00")
+            expense = monthly if service_month <= grant.service_months else Decimal("0.00")
             cumulative = (cumulative + expense).quantize(CENT)
-            vested = vested_shares(grant.shares, min(service_month, VEST_MONTHS))
+            vested = vested_shares(grant.shares, min(service_month, grant.service_months), grant.service_months)
             vested_value = _vested_value(grant, vested)
             status = "cliff" if service_month < CLIFF_MONTHS else "vesting"
             if ended_this_month:
@@ -151,19 +185,22 @@ def schedule_for(grant: SignedGrant, through_period: str) -> list[GrantMonth]:
         vested_value = _vested_value(grant, vested)
         if cumulative + CENT < vested_value:
             raise RuntimeError(f"{grant.grant_number} {period}: cumulative {cumulative} below vested {vested_value}")
+        net = (expense - reversal).quantize(CENT)
+        booking_currency = CURRENCY[entity]
+        rate = translation_rate(grant.currency, booking_currency, rate_cards.get(period))
         rows.append(
             GrantMonth(
                 grant_number=grant.grant_number,
-                employee_number=person["employee_number"],
-                legal_name=person["legal_name"],
+                employee_number=grant.employee_number,
+                legal_name=facts.legal_name,
                 period=period,
                 entity_code=entity,
                 department=department,
-                currency=currency,
+                currency=grant.currency,
                 service_month=service_month,
                 monthly_expense=expense,
                 reversal=reversal,
-                net_expense=(expense - reversal).quantize(CENT),
+                net_expense=net,
                 cumulative_expense=cumulative,
                 vested_shares=vested,
                 vested_value=vested_value,
@@ -171,24 +208,25 @@ def schedule_for(grant: SignedGrant, through_period: str) -> list[GrantMonth]:
                 board_approved=grant.board_approved,
                 vest_end=grant.vest_end,
                 cliff_end=grant.cliff_end,
+                booking_currency=booking_currency,
+                fx_rate=rate,
+                booked_net_expense=None if rate is None else (net * rate).quantize(CENT),
             )
         )
     return rows
 
 
-def _serving(person: dict, period: str) -> bool:
+def _serving(facts: EmployeeFacts, period: str) -> bool:
     month = month_of(period)
-    if person["hire_date"] > month.end:
+    if facts.hire_date > month.end:
         return False
-    ended = person.get("termination_date")
-    if ended is None:
+    if facts.termination_date is None:
         return True
-    return ended >= month.start
+    return facts.termination_date >= month.start
 
 
-def _forfeiture_month(person: dict, period: str) -> bool:
-    ended = person.get("termination_date")
-    return ended is not None and ended[:7] == period
+def _forfeiture_month(facts: EmployeeFacts, period: str) -> bool:
+    return facts.termination_date is not None and facts.termination_date[:7] == period
 
 
 def _vested_value(grant: SignedGrant, vested: int) -> Decimal:
@@ -217,4 +255,7 @@ def as_dict(row: GrantMonth) -> dict:
         "board_approved": row.board_approved,
         "vest_end": row.vest_end,
         "cliff_end": row.cliff_end,
+        "booking_currency": row.booking_currency,
+        "fx_rate": None if row.fx_rate is None else str(row.fx_rate),
+        "booked_net_expense": None if row.booked_net_expense is None else money_str(row.booked_net_expense),
     }

@@ -5,7 +5,7 @@ SQLITE_GUARDS = [
     CREATE TRIGGER IF NOT EXISTS journal_period_must_be_open
     BEFORE INSERT ON journal_entries
     FOR EACH ROW
-    WHEN (SELECT status FROM periods WHERE id = NEW.period_id) IS NOT 'open'
+    WHEN (SELECT status FROM periods WHERE id = NEW.period_id) NOT IN ('open', 'reopened')
     BEGIN
       SELECT RAISE(ABORT, 'period_locked');
     END
@@ -15,7 +15,7 @@ SQLITE_GUARDS = [
     BEFORE UPDATE OF status ON journal_entries
     FOR EACH ROW
     WHEN NEW.status IN ('approved', 'posted')
-      AND (SELECT status FROM periods WHERE id = NEW.period_id) IS NOT 'open'
+      AND (SELECT status FROM periods WHERE id = NEW.period_id) NOT IN ('open', 'reopened')
     BEGIN
       SELECT RAISE(ABORT, 'period_locked');
     END
@@ -25,7 +25,7 @@ SQLITE_GUARDS = [
     BEFORE UPDATE ON journal_entries
     FOR EACH ROW
     WHEN NOT (
-      (OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'rejected'))
+      (OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'rejected', 'withdrawn'))
       OR (OLD.status = 'approved' AND NEW.status = 'posted')
     )
     BEGIN
@@ -33,10 +33,25 @@ SQLITE_GUARDS = [
     END
     """,
     """
+    CREATE TRIGGER IF NOT EXISTS journal_must_balance_to_move
+    BEFORE UPDATE OF status ON journal_entries
+    FOR EACH ROW
+    WHEN NEW.status IN ('approved', 'posted')
+      AND (
+        (SELECT COUNT(*) FROM journal_lines WHERE entry_id = NEW.id) < 2
+        OR (SELECT COALESCE(SUM(debit), 0) FROM journal_lines WHERE entry_id = NEW.id)
+           <> (SELECT COALESCE(SUM(credit), 0) FROM journal_lines WHERE entry_id = NEW.id)
+        OR (SELECT COALESCE(SUM(debit), 0) FROM journal_lines WHERE entry_id = NEW.id) <= 0
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'unbalanced_journal');
+    END
+    """,
+    """
     CREATE TRIGGER IF NOT EXISTS posted_journal_cannot_be_deleted
     BEFORE DELETE ON journal_entries
     FOR EACH ROW
-    WHEN OLD.status IN ('posted', 'rejected')
+    WHEN OLD.status IN ('posted', 'rejected', 'withdrawn')
     BEGIN
       SELECT RAISE(ABORT, 'journal_is_final');
     END
@@ -45,7 +60,7 @@ SQLITE_GUARDS = [
     CREATE TRIGGER IF NOT EXISTS posted_lines_cannot_change
     BEFORE UPDATE ON journal_lines
     FOR EACH ROW
-    WHEN (SELECT status FROM journal_entries WHERE id = OLD.entry_id) IN ('approved', 'posted', 'rejected')
+    WHEN (SELECT status FROM journal_entries WHERE id = OLD.entry_id) IN ('approved', 'posted', 'rejected', 'withdrawn')
     BEGIN
       SELECT RAISE(ABORT, 'journal_is_final');
     END
@@ -54,7 +69,7 @@ SQLITE_GUARDS = [
     CREATE TRIGGER IF NOT EXISTS posted_lines_cannot_be_deleted
     BEFORE DELETE ON journal_lines
     FOR EACH ROW
-    WHEN (SELECT status FROM journal_entries WHERE id = OLD.entry_id) IN ('approved', 'posted', 'rejected')
+    WHEN (SELECT status FROM journal_entries WHERE id = OLD.entry_id) IN ('approved', 'posted', 'rejected', 'withdrawn')
     BEGIN
       SELECT RAISE(ABORT, 'journal_is_final');
     END
@@ -87,6 +102,34 @@ SQLITE_GUARDS = [
       SELECT RAISE(ABORT, 'append_only');
     END
     """,
+    """
+    CREATE TRIGGER IF NOT EXISTS equity_schedule_runs_append_only_update
+    BEFORE UPDATE ON equity_schedule_runs
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS equity_schedule_runs_append_only_delete
+    BEFORE DELETE ON equity_schedule_runs
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS equity_grant_months_append_only_update
+    BEFORE UPDATE ON equity_grant_months
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS equity_grant_months_append_only_delete
+    BEFORE DELETE ON equity_grant_months
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
 ]
 
 POSTGRES_GUARDS = [
@@ -99,7 +142,7 @@ POSTGRES_GUARDS = [
       period_status text;
     BEGIN
       SELECT status INTO period_status FROM periods WHERE id = NEW.period_id;
-      IF period_status IS DISTINCT FROM 'open' THEN
+      IF period_status IS NULL OR period_status NOT IN ('open', 'reopened') THEN
         RAISE EXCEPTION 'period_locked' USING ERRCODE = '23514';
       END IF;
       RETURN NEW;
@@ -182,20 +225,20 @@ POSTGRES_GUARDS = [
       period_status text;
     BEGIN
       IF TG_OP = 'DELETE' THEN
-        IF OLD.status IN ('posted', 'rejected') THEN
+        IF OLD.status IN ('posted', 'rejected', 'withdrawn') THEN
           RAISE EXCEPTION 'journal_is_final' USING ERRCODE = '23514';
         END IF;
         RETURN OLD;
       END IF;
       IF NOT (
-        (OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'rejected'))
+        (OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'rejected', 'withdrawn'))
         OR (OLD.status = 'approved' AND NEW.status = 'posted')
       ) THEN
         RAISE EXCEPTION 'journal_is_final' USING ERRCODE = '23514';
       END IF;
       IF NEW.status IN ('approved', 'posted') THEN
         SELECT status INTO period_status FROM periods WHERE id = NEW.period_id;
-        IF period_status IS DISTINCT FROM 'open' THEN
+        IF period_status IS NULL OR period_status NOT IN ('open', 'reopened') THEN
           RAISE EXCEPTION 'period_locked' USING ERRCODE = '23514';
         END IF;
       END IF;
@@ -221,7 +264,7 @@ POSTGRES_GUARDS = [
       entry_status text;
     BEGIN
       SELECT status INTO entry_status FROM journal_entries WHERE id = OLD.entry_id;
-      IF entry_status IN ('approved', 'posted', 'rejected') THEN
+      IF entry_status IN ('approved', 'posted', 'rejected', 'withdrawn') THEN
         RAISE EXCEPTION 'journal_is_final' USING ERRCODE = '23514';
       END IF;
       IF TG_OP = 'DELETE' THEN
@@ -265,6 +308,24 @@ POSTGRES_GUARDS = [
     """
     CREATE TRIGGER reconciliations_append_only
     BEFORE UPDATE OR DELETE ON reconciliations
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS equity_schedule_runs_append_only ON equity_schedule_runs
+    """,
+    """
+    CREATE TRIGGER equity_schedule_runs_append_only
+    BEFORE UPDATE OR DELETE ON equity_schedule_runs
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS equity_grant_months_append_only ON equity_grant_months
+    """,
+    """
+    CREATE TRIGGER equity_grant_months_append_only
+    BEFORE UPDATE OR DELETE ON equity_grant_months
     FOR EACH ROW
     EXECUTE FUNCTION vestly_append_only()
     """,

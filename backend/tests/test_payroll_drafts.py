@@ -1,7 +1,20 @@
 from decimal import Decimal
 
-from app.payroll.calc import overpaid_gross, riley_hand_calc
+from app.payroll.calc import overpaid_gross
 from helpers import AGENT, CONTROLLER
+
+
+def riley_hand_calc() -> dict[str, str]:
+    """Riley Nguyen, US Engineering, June, worked by hand: gross 10000.00 at the policy's US rates
+    (withholding 20%, employer tax 8%, 401(k) match 4%). Kept here so the code is checked against
+    arithmetic it does not share."""
+    return {
+        "gross_wages": "10000.00",
+        "employee_withholdings": "2000.00",
+        "net_pay": "8000.00",
+        "employer_tax": "800.00",
+        "employer_contribution": "400.00",
+    }
 
 
 def _named(rows: list[dict], name: str) -> dict:
