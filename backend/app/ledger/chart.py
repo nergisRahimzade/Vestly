@@ -10,7 +10,11 @@ ENTITIES: tuple[tuple[str, str, str], ...] = (
 ACCOUNTS: tuple[tuple[str, str, str, str], ...] = (
     ("1000", "Cash", "asset", "debit"),
     ("1100", "Payroll clearing", "asset", "debit"),
+    ("1200", "Employee overpayment receivable", "asset", "debit"),
+    ("1210", "Payroll suspense", "asset", "debit"),
     ("2100", "Wages payable", "liability", "credit"),
+    ("2150", "Accrued wages", "liability", "credit"),
+    ("2160", "Accrued employer taxes and contributions", "liability", "credit"),
     ("2200", "Employee tax withholdings payable", "liability", "credit"),
     ("2210", "Employer taxes payable", "liability", "credit"),
     ("2220", "Pension and social contributions payable", "liability", "credit"),

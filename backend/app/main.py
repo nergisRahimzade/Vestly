@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.db import SessionLocal, init_db
 from app.ledger.errors import LedgerError
 from app.ledger.routes import router
+from app.payroll.routes import router as payroll_router
 from app.reconcile.routes import router as reconcile_router
 from app.world.routes import router as world_router
 
@@ -27,6 +28,7 @@ app = FastAPI(title="Vestly", version="0.1.0", lifespan=lifespan)
 app.include_router(router)
 app.include_router(world_router)
 app.include_router(reconcile_router)
+app.include_router(payroll_router)
 
 
 @app.exception_handler(LedgerError)

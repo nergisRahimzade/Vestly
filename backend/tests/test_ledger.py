@@ -44,7 +44,11 @@ def test_chart_and_entities(client):
     assert {account["code"] for account in chart.json()} == {
         "1000",
         "1100",
+        "1200",
+        "1210",
         "2100",
+        "2150",
+        "2160",
         "2200",
         "2210",
         "2220",
