@@ -148,7 +148,7 @@ rules:
 - Approvals are bound to the exact entry or transfer: amount, payee, account and case. Changing any of them voids the approval.
 - Every refusal is logged with its rule id, so the audit trail shows what the agent tried and what stopped it.
 
-**How this repo adapts it (PLAN.md section 4, task 8):** roles `agent`, `controller`, `treasury`, `hr_ops`, `hr_comp`, `legal`, `payroll_provider`, `dept_head`, `auditor`, `none`; added rules SOD-2 (whoever entered a pay change can't approve the run that pays it), CLS-1 (nothing posts into a locked period; reopen is a controller action with a reason), PRV-1 (the agent reads one person's pay only inside an open case); seat identities will be `vestly.payroll` and `vestly.equity` (today one `vestly` identity). People: controller `dana.ruiz`, HR ops `lee.park`, HR comp `sam.kerr`, treasury `alex.moreau` and `jordan.hayes`, legal `morgan.li`, `payroll.provider`, department heads `head.engineering|product|gtm|ga`, auditor `riley.auditor`, `stranger`. The cash/approval limit, call-back window and reminder waits are in the policy file under `controls`.
+**How this repo adapts it (PLAN.md section 4, task 8):** roles `agent`, `controller`, `treasury`, `hr_ops`, `hr_comp`, `legal`, `payroll_provider`, `dept_head`, `auditor`, `none`; added rules SOD-2 (whoever entered a pay change can't approve the run that pays it), CLS-1 (nothing posts into a locked period; reopen is a controller action with a reason), PRV-1 (the agent reads one person's pay only inside an open case); seat identities are `vestly.payroll` and `vestly.equity` (each drafts only its own seat's work). Also ACC-1 (act only within your role) and BND-1 (any change to an approved entry voids the approval). People: controller `dana.ruiz`, finance manager `chris.lam` (the workpaper's finance_mgr), HR ops `lee.park`, HR comp `sam.kerr`, treasury `alex.moreau` and `jordan.hayes`, legal `morgan.li`, `payroll.provider`, department heads `head.engineering|product|gtm|ga`, auditor `riley.auditor`, `stranger`. The cash/approval limit, call-back window and reminder waits are in the policy file under `controls`.
 
 ## 8. Data and memory (workpaper: Data & memory tab)
 
@@ -185,10 +185,10 @@ Months: January–May 2026 closed and locked (booked by Northlight's old process
 
 | Id | Case | Who | Status in code today |
 | --- | --- | --- | --- |
-| A01 | Bank-detail diversion by email; provider paid the emailed account | Maya Chen (US) | Data planted; precedent found for her. **Not yet detected or held** (tasks 8–9). |
+| A01 | Bank-detail diversion by email; provider paid the emailed account | Maya Chen (US) | Precedent found; the gate refuses pay to the emailed account without a confirmed call-back (BNK-1). **Detection** in task 9. |
 | A02 | Late termination: left 12 Mar, HR recorded 2 Apr, paid to 15 Mar | Priya Shah (US) | Reconciler shows the four-way conflict with HR trusted; 1,500.00 overpayment drafted once in June to 1200; traced to HR and the March register. |
 | A03 | Forfeiture still expensed | Priya, Hannah Price (UK, pre-cliff) | Subledger forfeits; June true-up reverses 3,000.00 USD and 5,500.00 GBP; routed to the controller. |
-| A04 | Backdated raise into locked April, entered by `sam.kerr` | Evan Brooks (US) | Data planted (4,000.00 retro lump). **Not held; SOD-2 not enforced yet.** |
+| A04 | Backdated raise into locked April, entered by `sam.kerr` | Evan Brooks (US) | SOD-2 refuses `sam.kerr` approving the US June run. **Lump not yet held** (task 9). |
 | A05 | Ghost employee | Sam Ortiz | No wage line; 6,400.00 cash to suspense 1210; HR asked. |
 | A06 | Grant with no board approval | Lukas Weber (DE) | No expense; June true-up reverses 6,000.00 EUR; legal asked. |
 | A07 | UK pension at 3% vs policy 5% | Amira Khan (UK) | Drafted at 5%; 160.00 GBP difference noted to the provider. |
@@ -197,7 +197,7 @@ Months: January–May 2026 closed and locked (booked by Northlight's old process
 | A10 | Duplicate grant on the platform | Nadia Rossi (US) | Expensed once; duplicate's 500.00 reversed; noted. |
 | A11 | Transfer DE → UK on 1 June not reflected | Tomas Fischer | Stock expense follows HR to UK at 425.49 GBP, DE reverses 500.00 EUR. **Payroll still drafted in DE** (task 9). |
 | A12 | Partial funding booked in full (DE) | — | **Not planted yet.** |
-| A13 | Self-approval of a 62,000.00 accrual | — | Generic preparer ≠ reviewer is enforced; **the scenario isn't built yet.** |
+| A13 | Self-approval of a 62,000.00 accrual | US accrual | ✅ Requester refused (SOD-1); needs two approvers incl. the controller (LIM-1). |
 
 True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Greta Hoffmann, Ines Duarte (partial first UK pay), the in-band GBPUSD difference. Unlabeled mess (explain, don't flag): OCR typos in emails, Greta's duplicated HR row, Sofia's pay posted 1 July, FX inside the band.
 
@@ -213,8 +213,9 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 6: read the world from the database, Jan–Jun, equity true-up, withdrawn drafts, reopen | `fix/truth-booking-and-history` |
 | Task 7: evidence log, provenance, trace, precedents | `record/evidence-and-precedents` |
 | This file | `docs/claude-md` |
+| Task 8: policy gate, approvals inbox, clock, call-backs | `controls/policy-gate-and-approvals` |
 
-**Next: task 8 `controls/policy-gate-and-approvals`** (pull from `docs/claude-md`), then 9 detectors, 10 scorer, 11 cases and posting, 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 9 `domain/detectors`** (pull from `controls/policy-gate-and-approvals`), then 10 scorer, 11 cases and posting, 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.identities import Actor
 from app.auth.permissions import JOURNAL_DRAFT, require
+from app.controls.gate import check_seat, enforce
 from app.ledger.errors import LedgerError
 from app.ledger.chart import ENTITIES as ENTITY_ROWS
 from app.ledger.models import JournalEntry, JournalLine, Period
@@ -31,6 +32,7 @@ ENTITIES = tuple(code for code, _name, _currency in ENTITY_ROWS)
 
 def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
     require(actor, JOURNAL_DRAFT, "draft payroll journals")
+    enforce(check_seat(actor, "payroll"), actor, "draft payroll journals")
     parse_period(period)
     if not world_loaded(session):
         raise LedgerError("world_not_loaded", "Load the company file drops before drafting payroll.", 409)

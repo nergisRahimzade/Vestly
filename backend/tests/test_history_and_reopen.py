@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from app.db import ENGINE
 from app.world.drops import MONTHS, build_drop, canonical, fixture_dir
-from helpers import AGENT, CONTROLLER
+from helpers import AGENT, CONTROLLER, EQUITY_AGENT
 
 APP = Path(__file__).resolve().parents[1] / "app"
 GENERATOR_TRUTH = {"PEOPLE", "SAM_ORTIZ", "assignment", "person_by_number", "hr_view", "ENTITY_RATES", "RATE_CARD"}
@@ -65,7 +65,7 @@ def test_payroll_then_equity_then_payroll_again(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
     first = client.post("/payroll/drafts?period=2026-06", headers=AGENT)
     assert first.status_code == 200, first.text
-    assert client.post("/equity/drafts?period=2026-06", headers=AGENT).status_code == 200
+    assert client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).status_code == 200
     again = client.post("/payroll/drafts?period=2026-06", headers=AGENT)
     assert again.status_code == 200, again.text
     entries = client.get("/entities/US/journal-entries?period=2026-06", headers=CONTROLLER).json()
@@ -93,6 +93,7 @@ def test_a_withdrawn_draft_is_final(client):
 
 
 def test_sqlite_refuses_to_approve_an_unbalanced_entry(client):
+    """Even if a draft's lines are edited behind the service, the database will not let it become approved."""
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
     draft = client.post(
         "/journal-entries",
@@ -111,9 +112,19 @@ def test_sqlite_refuses_to_approve_an_unbalanced_entry(client):
         connection.execute(
             text("UPDATE journal_lines SET debit = 60.00 WHERE entry_id = :id AND debit > 0"), {"id": draft["id"]}
         )
+    with pytest.raises(Exception, match="unbalanced_journal"):
+        with ENGINE.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE journal_entries SET status = 'approved', reviewed_by = 'dana.ruiz', "
+                    "reviewed_at = CURRENT_TIMESTAMP WHERE id = :id"
+                ),
+                {"id": draft["id"]},
+            )
+    # Through the service, the edit is caught even earlier: the approval no longer matches what was asked for.
     refused = client.post(f"/journal-entries/{draft['id']}/approve", headers=CONTROLLER)
-    assert refused.status_code == 422
-    assert refused.json()["error"] == "unbalanced_journal"
+    assert refused.status_code == 409
+    assert refused.json()["rule"] == "BND-1"
 
 
 def test_only_the_controller_reopens_a_closed_month_and_always_with_a_reason(client):

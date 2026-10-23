@@ -54,6 +54,11 @@ def policy() -> dict:
         "materiality_currency": loaded.materiality_currency,
         "fx_band": money_str(loaded.fx_band),
         "contributions": {code: money_str(rate) for code, rate in loaded.contributions},
+        "approval_limit": money_str(loaded.approval_limit),
+        "approval_limit_currency": loaded.approval_limit_currency,
+        "callback_window_days": loaded.callback_window_days,
+        "roles": {name: list(actions) for name, actions in loaded.roles},
+        "rules": {name: text for name, text in loaded.rules},
         "facts": [
             {
                 "fact": fact.fact,

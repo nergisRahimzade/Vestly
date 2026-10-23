@@ -6,6 +6,8 @@ class LineIn(BaseModel):
     debit: str
     credit: str
     department: str | None = None
+    # The source rows this line was built from: {"table": ..., "id": ...}. The gate checks them (GRT-1, CTR-1).
+    sources: list[dict] | None = None
 
 
 class JournalIn(BaseModel):

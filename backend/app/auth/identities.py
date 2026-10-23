@@ -11,8 +11,11 @@ class Actor:
 
 # handle, display name, role, department (department heads only)
 IDENTITIES: tuple[tuple[str, str, str, str | None], ...] = (
-    ("vestly", "Vestly", "agent", None),
+    # Vestly works under one identity per seat. Neither can approve, post, release or reopen.
+    ("vestly.payroll", "Vestly, payroll accountant seat", "agent", None),
+    ("vestly.equity", "Vestly, equity compensation accountant seat", "agent", None),
     ("dana.ruiz", "Dana Ruiz", "controller", None),
+    ("chris.lam", "Chris Lam", "finance_mgr", None),
     ("lee.park", "Lee Park", "hr_ops", None),
     ("sam.kerr", "Sam Kerr", "hr_comp", None),
     ("alex.moreau", "Alex Moreau", "treasury", None),
@@ -28,4 +31,6 @@ IDENTITIES: tuple[tuple[str, str, str, str | None], ...] = (
 )
 
 CONTROLLER_HANDLE = "dana.ruiz"
-AGENT_HANDLE = "vestly"
+PAYROLL_SEAT = "vestly.payroll"
+EQUITY_SEAT = "vestly.equity"
+SEATS = {PAYROLL_SEAT: "payroll", EQUITY_SEAT: "equity"}

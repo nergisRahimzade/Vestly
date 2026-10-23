@@ -9,7 +9,7 @@ from app.db import SessionLocal
 from app.equity.models import EquityGrantMonth, EquityScheduleRun
 from app.equity.service import compute_schedules
 from app.world.drops import Plant, build_drop
-from helpers import AGENT, CONTROLLER, STRANGER
+from helpers import AGENT, CONTROLLER, EQUITY_AGENT, STRANGER
 
 
 def _named(rows: list[dict], name: str, period: str | None = None) -> dict:
@@ -135,12 +135,12 @@ def test_june_schedules(client):
 
 def test_june_drafts_a_true_up_not_a_second_booking(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
-    locked = client.post("/equity/drafts?period=2026-03", headers=AGENT)
+    locked = client.post("/equity/drafts?period=2026-03", headers=EQUITY_AGENT)
     assert locked.status_code == 409
     assert locked.json()["error"] == "period_locked"
     assert client.post("/equity/drafts?period=2026-06", headers=CONTROLLER).status_code == 403
 
-    response = client.post("/equity/drafts?period=2026-06", headers=AGENT)
+    response = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["window_start"] == "2026-01"
@@ -177,7 +177,7 @@ def test_june_drafts_a_true_up_not_a_second_booking(client):
 
 def test_after_the_true_up_the_books_match_the_subledger(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
-    body = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
+    body = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
     for entry in body["journals"]:
         assert client.post(f"/journal-entries/{entry['id']}/approve", headers=CONTROLLER).status_code == 200
         assert client.post(f"/journal-entries/{entry['id']}/post", headers=CONTROLLER).status_code == 200
@@ -194,20 +194,20 @@ def test_after_the_true_up_the_books_match_the_subledger(client):
                 department,
             )
 
-    again = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
+    again = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
     assert again["journals"] == []
 
 
 def test_july_does_not_repeat_junes_corrections(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
-    june = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
+    june = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
     for entry in june["journals"]:
         client.post(f"/journal-entries/{entry['id']}/approve", headers=CONTROLLER)
         client.post(f"/journal-entries/{entry['id']}/post", headers=CONTROLLER)
     july_drop = build_drop("2026-07", plants=[], closed=False)
     assert client.post("/world/drops", headers=CONTROLLER, json=july_drop).status_code == 200
 
-    july = client.post("/equity/drafts?period=2026-07", headers=AGENT).json()
+    july = client.post("/equity/drafts?period=2026-07", headers=EQUITY_AGENT).json()
     grants = {row["grant_number"] for row in july["trueup"]}
     # July's platform still expenses Lukas without a board approval. That is July's own error.
     assert grants == {"GR-DE-001"}
@@ -216,8 +216,8 @@ def test_july_does_not_repeat_junes_corrections(client):
 
 def test_a_rerun_withdraws_the_old_draft(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
-    first = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
-    second = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
+    first = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
+    second = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
     us_entries = [
         entry
         for entry in client.get("/entities/US/journal-entries?period=2026-06", headers=CONTROLLER).json()

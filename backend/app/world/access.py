@@ -26,9 +26,12 @@ def individual_scope(session: Session, who: Actor, employee_number: str | None) 
             return employee_number
         raise LedgerError(
             "forbidden",
-            "Vestly sees one person's pay only inside an open case on that person. "
+            "PRV-1: Vestly sees one person's pay only inside an open case on that person. "
             "Department totals are at /world/payroll/totals.",
             403,
+            rule="PRV-1",
+            actor=who.handle,
+            action="read one person's pay",
         )
     raise LedgerError("forbidden", "Payroll and equity sources are not visible to this identity.", 403)
 

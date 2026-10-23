@@ -38,6 +38,10 @@ class Policy:
     callback_window_days: int
     reminder_after_days: int
     escalate_after_reminders: int
+    escalation: tuple[tuple[str, str], ...]
+    clock_start: str
+    roles: tuple[tuple[str, tuple[str, ...]], ...]
+    rules: tuple[tuple[str, str], ...]
     facts: tuple[FactPolicy, ...]
     content_hash: str
 
@@ -52,6 +56,24 @@ class Policy:
             if code == entity_code:
                 return rate
         raise KeyError(entity_code)
+
+    def role_actions(self, role: str) -> tuple[str, ...]:
+        for name, actions in self.roles:
+            if name == role:
+                return actions
+        return ()
+
+    def rule(self, rule_id: str) -> str:
+        for name, text in self.rules:
+            if name == rule_id:
+                return text
+        raise KeyError(rule_id)
+
+    def escalates_to(self, role: str) -> str | None:
+        for source, target in self.escalation:
+            if source == role:
+                return target
+        return None
 
     def withholding_rate(self, entity_code: str) -> Decimal:
         return self._statutory(entity_code)[0]
@@ -114,6 +136,10 @@ def _parse_policy(path: Path) -> Policy:
         callback_window_days=int(controls["callback_window_days"]),
         reminder_after_days=int(controls["reminder_after_days"]),
         escalate_after_reminders=int(controls["escalate_after_reminders"]),
+        escalation=tuple((source, target) for source, target in controls["escalation"].items()),
+        clock_start=str(controls["clock_start"]),
+        roles=tuple((name, tuple(actions or ())) for name, actions in document["roles"].items()),
+        rules=tuple((name, str(text)) for name, text in document["rules"].items()),
         facts=facts,
         content_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
     )

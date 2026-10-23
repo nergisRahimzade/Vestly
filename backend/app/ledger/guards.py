@@ -172,6 +172,34 @@ SQLITE_GUARDS = [
       SELECT RAISE(ABORT, 'append_only');
     END
     """,
+    """
+    CREATE TRIGGER IF NOT EXISTS approval_decisions_append_only_update
+    BEFORE UPDATE ON approval_decisions
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS approval_decisions_append_only_delete
+    BEFORE DELETE ON approval_decisions
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS callbacks_append_only_update
+    BEFORE UPDATE ON callbacks
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS callbacks_append_only_delete
+    BEFORE DELETE ON callbacks
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
 ]
 
 POSTGRES_GUARDS = [
@@ -395,6 +423,24 @@ POSTGRES_GUARDS = [
     """
     CREATE TRIGGER source_documents_append_only
     BEFORE UPDATE OR DELETE ON source_documents
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS approval_decisions_append_only ON approval_decisions
+    """,
+    """
+    CREATE TRIGGER approval_decisions_append_only
+    BEFORE UPDATE OR DELETE ON approval_decisions
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS callbacks_append_only ON callbacks
+    """,
+    """
+    CREATE TRIGGER callbacks_append_only
+    BEFORE UPDATE OR DELETE ON callbacks
     FOR EACH ROW
     EXECUTE FUNCTION vestly_append_only()
     """,

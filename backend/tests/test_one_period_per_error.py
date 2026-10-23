@@ -105,7 +105,7 @@ def test_the_service_and_the_database_refuse_a_second_live_key(client):
 
     with SessionLocal() as session:
         with pytest.raises(LedgerError):
-            draft_entry(session, {**payload, "period": "2026-07"}, Actor(handle="vestly", role="agent"))
+            draft_entry(session, {**payload, "period": "2026-07"}, Actor(handle="vestly.payroll", role="agent"))
 
     with ENGINE.begin() as connection:
         row = connection.execute(

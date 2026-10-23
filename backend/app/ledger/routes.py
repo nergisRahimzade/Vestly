@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import current_actor
 from app.auth.identities import Actor
 from app.auth.permissions import LEDGER_READ, require
+from app.controls.approvals import decide_entry
 from app.db import get_db
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, Period
@@ -22,7 +23,6 @@ from app.ledger.service import (
     post_approved,
     reopen_period,
     require_entity,
-    review_entry,
 )
 
 router = APIRouter()
@@ -153,7 +153,9 @@ def approve_journal_entry(
     db: Session = Depends(get_db),
     who: Actor = Depends(current_actor),
 ) -> JournalOut:
-    return journal_out(review_entry(db, entry_id, who, approve=True, note=body.note if body else None))
+    """Approve through the approvals inbox: the gate checks SOD-1, SOD-2, ACC-1, BND-1 and LIM-1.
+    Above the approval limit the entry stays a draft until a second approver, one the controller, agrees."""
+    return journal_out(decide_entry(db, entry_id, who, approve=True, note=body.note if body else None))
 
 
 @router.post("/journal-entries/{entry_id}/reject", response_model=JournalOut)
@@ -163,7 +165,7 @@ def reject_journal_entry(
     db: Session = Depends(get_db),
     who: Actor = Depends(current_actor),
 ) -> JournalOut:
-    return journal_out(review_entry(db, entry_id, who, approve=False, note=body.note))
+    return journal_out(decide_entry(db, entry_id, who, approve=False, note=body.note))
 
 
 @router.post("/journal-entries/{entry_id}/post", response_model=JournalOut)

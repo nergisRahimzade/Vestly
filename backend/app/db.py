@@ -53,6 +53,7 @@ def init_db(engine=None) -> None:
     from app.reconcile import models as reconcile_models  # noqa: F401
     from app.equity import models as equity_models  # noqa: F401
     from app.record import models as record_models  # noqa: F401
+    from app.controls import models as controls_models  # noqa: F401
     from app.ledger.guards import install_guards
     from app.ledger.seed import seed
 

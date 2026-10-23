@@ -58,7 +58,7 @@ def test_june_payroll_drafts(client):
     assert response.status_code == 200, response.text
     body = response.json()
     assert all(entry["balanced"] and entry["status"] == "draft" for entry in body["journals"])
-    assert all(entry["prepared_by"] == "vestly" for entry in body["journals"])
+    assert all(entry["prepared_by"] == "vestly.payroll" for entry in body["journals"])
 
     riley = _named(body["people"], "Riley Nguyen")
     assert riley == {

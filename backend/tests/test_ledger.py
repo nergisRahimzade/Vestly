@@ -93,7 +93,7 @@ def test_foundation_fixture(client):
                 assert body["error"] == expect["error"]
             else:
                 assert body["status"] == "draft"
-                assert body["prepared_by"] == "vestly"
+                assert body["prepared_by"] == "vestly.payroll"
                 posted = approve_and_post(client, body["id"])
                 assert posted["total_debit"] == expect["total"]
                 assert posted["total_credit"] == expect["total"]
@@ -119,10 +119,12 @@ def test_agent_cannot_post_or_lock(client):
     assert denied_lock.json()["error"] == "forbidden"
     draft = client.post("/journal-entries", headers=AGENT, json=WAGES)
     assert draft.status_code == 201
-    for action in ("approve", "post"):
+    # Approving its own draft is refused as separation of duties; posting is not in its role at all.
+    for action, error, rule in (("approve", "separation_of_duties", "SOD-1"), ("post", "forbidden", "ACC-1")):
         denied = client.post(f"/journal-entries/{draft.json()['id']}/{action}", headers=AGENT)
         assert denied.status_code == 403
-        assert denied.json()["error"] == "forbidden"
+        assert denied.json()["error"] == error
+        assert denied.json()["rule"] == rule
     period = client.get("/entities/US/periods/2026-03", headers=CONTROLLER)
     assert period.json()["status"] == "open"
     listed = client.get("/entities/US/journal-entries?period=2026-03", headers=CONTROLLER)

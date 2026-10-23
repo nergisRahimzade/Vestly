@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.identities import Actor
 from app.auth.permissions import JOURNAL_DRAFT, LEDGER_READ, require
+from app.controls.gate import check_seat, enforce
 from app.equity.models import EquityGrantMonth, EquityScheduleRun
 from app.equity.schedule import EmployeeFacts, GrantMonth, SignedGrant, as_dict, parse_signed_grant, schedule_for
 from app.ledger.chart import ENTITIES as ENTITY_ROWS
@@ -209,6 +210,7 @@ def department_subledger(session: Session, period: str, entity_code: str, depart
 
 def draft_equity(session: Session, period: str, actor: Actor) -> dict:
     require(actor, JOURNAL_DRAFT, "draft equity journals")
+    enforce(check_seat(actor, "equity"), actor, "draft equity journals")
     parse_period(period)
     if not world_loaded(session):
         raise LedgerError("world_not_loaded", "Load the company file drops before drafting equity.", 409)

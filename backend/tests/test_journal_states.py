@@ -33,7 +33,7 @@ def _raw(sql: str, **params) -> None:
 
 def test_draft_then_approve_then_post(client, draft):
     assert draft["status"] == "draft"
-    assert draft["prepared_by"] == "vestly"
+    assert draft["prepared_by"] == "vestly.payroll"
     assert draft["reviewed_by"] is None and draft["posted_by"] is None
     early = client.post(f"/journal-entries/{draft['id']}/post", headers=CONTROLLER)
     assert early.status_code == 409

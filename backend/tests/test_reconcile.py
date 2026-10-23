@@ -98,7 +98,7 @@ def test_every_run_is_kept(client):
     second = client.post("/reconciliations?period=2026-06", headers=CONTROLLER).json()
     assert first["run"]["sequence"] == 1
     assert second["run"]["sequence"] == 2
-    assert first["run"]["ran_by"] == "vestly"
+    assert first["run"]["ran_by"] == "vestly.payroll"
     assert second["run"]["ran_by"] == "dana.ruiz"
     assert first["run"]["inputs_hash"] == second["run"]["inputs_hash"]
     assert first["run"]["policy_hash"] == second["run"]["policy_hash"]

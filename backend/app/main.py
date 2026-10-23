@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.controls.gate import log_refusal
+from app.controls.routes import router as controls_router
 from app.db import SessionLocal, init_db
 from app.ledger.errors import LedgerError
 from app.ledger.routes import router
@@ -33,11 +35,17 @@ app.include_router(reconcile_router)
 app.include_router(payroll_router)
 app.include_router(equity_router)
 app.include_router(record_router)
+app.include_router(controls_router)
 
 
 @app.exception_handler(LedgerError)
 def handle_ledger_error(_request: Request, exc: LedgerError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status, content={"error": exc.code, "message": exc.message})
+    """Every refusal names its rule and goes into the evidence log, so the record shows what was tried."""
+    content = {"error": exc.code, "message": exc.message}
+    if exc.rule is not None:
+        content["rule"] = exc.rule
+        log_refusal(exc)
+    return JSONResponse(status_code=exc.status, content=content)
 
 
 @app.get("/health")

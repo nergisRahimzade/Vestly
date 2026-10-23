@@ -574,6 +574,7 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 | Fix | `fix/one-period-per-error` | Booking keys; Priya's March overpayment booked once (G16) |
 | 6 | `fix/truth-booking-and-history` | Subledger and payroll read loaded data; January to June world; equity true-up; withdrawn drafts; non-repeating numbers; reopen; SQLite balance trigger; drops load at run time (G1–G11, G14) |
 | 7 | `record/evidence-and-precedents` | Hash-chained evidence log on every write path (the access log folded in); source documents immutable and cited by hash; journal lines carry their source rows; `/audit/verify`, `/audit/events`, `/audit/trace/journal-line/{id}`; precedents with scope, dates and overrule; P-2026-03-001 seeded from the controller's email |
+| 8 | `controls/policy-gate-and-approvals` | Roles and rules (ACC-1, SOD-1/2, LIM-1, BND-1, BNK-1, GRT-1, CTR-1, DUP-1, CLS-1, PRV-1) in policy; gate with rule ids; every refusal in the evidence log; seat identities `vestly.payroll` / `vestly.equity`; finance manager `chris.lam`; approvals bound to the entry hash; two approvers above 25,000 USD with the controller; simulated clock with reminders and escalation; HR call-back log for BNK-1 |
 
 ### Foundation fixes
 

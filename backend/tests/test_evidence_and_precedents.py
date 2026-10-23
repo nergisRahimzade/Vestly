@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import ENGINE, SessionLocal
 from app.world.models import SourceDocument
-from helpers import AGENT, AUDITOR, CONTROLLER, STRANGER
+from helpers import AGENT, AUDITOR, CONTROLLER, EQUITY_AGENT, FINANCE_MGR, STRANGER
 
 
 def _events(client, **filters) -> list[dict]:
@@ -27,10 +27,12 @@ def _june_payroll(client) -> dict:
 def test_every_write_path_leaves_evidence_and_the_chain_holds(client):
     body = _june_payroll(client)
     wages = next(entry for entry in body["journals"] if entry["booking_key"] == "payroll:wages:US:2026-06")
-    assert client.post(f"/journal-entries/{wages['id']}/approve", headers=CONTROLLER).status_code == 200
+    # US wages are above the approval limit: the finance manager and the controller both approve.
+    assert client.post(f"/journal-entries/{wages['id']}/approve", headers=FINANCE_MGR).json()["status"] == "draft"
+    assert client.post(f"/journal-entries/{wages['id']}/approve", headers=CONTROLLER).json()["status"] == "approved"
     assert client.post(f"/journal-entries/{wages['id']}/post", headers=CONTROLLER).status_code == 200
     client.post("/payroll/drafts?period=2026-06", headers=AGENT)
-    client.post("/equity/drafts?period=2026-06", headers=AGENT)
+    client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT)
     client.post("/reconciliations?period=2026-06", headers=AGENT)
     client.get("/world/hr?period=2026-06&employee_number=NL-US-005", headers=AUDITOR)
     client.post("/entities/US/periods/2026-03/reopen", headers=CONTROLLER, json={"reason": "Test reopen"})
@@ -65,7 +67,7 @@ def test_every_write_path_leaves_evidence_and_the_chain_holds(client):
         for event in _events(client, subject_type="journal_entry", subject_id=wages["id"])
         if event["action"] == "journal_drafted"
     )
-    assert drafted["actor"] == "vestly"
+    assert drafted["actor"] == "vestly.payroll"
     assert drafted["payload"]["booking_key"] == "payroll:wages:US:2026-06"
     assert drafted["policy_hash"] == client.get("/policy").json()["content_hash"]
     assert drafted["basis"] and all(item["type"] == "document" for item in drafted["basis"])
@@ -113,7 +115,7 @@ def test_a_june_wage_line_traces_to_rileys_register_row(client):
 
     trace = client.get(f"/audit/trace/journal-line/{engineering['id']}", headers=AUDITOR).json()
     assert trace["line"]["debit"] == engineering["debit"]
-    assert trace["people"]["prepared_by"] == "vestly"
+    assert trace["people"]["prepared_by"] == "vestly.payroll"
     assert trace["policy"]["hash"] == client.get("/policy").json()["content_hash"]
     riley = next(source for source in trace["sources"] if source.get("employee_number") == "NL-US-005")
     assert riley["table"] == "payroll_register_rows"
@@ -140,7 +142,7 @@ def test_an_overpayment_line_traces_to_hr_and_the_march_register(client):
 
 def test_an_equity_true_up_line_traces_to_the_subledger_and_the_lines_it_offsets(client):
     assert client.post("/world/load", headers=CONTROLLER).status_code == 200
-    body = client.post("/equity/drafts?period=2026-06", headers=AGENT).json()
+    body = client.post("/equity/drafts?period=2026-06", headers=EQUITY_AGENT).json()
     us = next(entry for entry in body["journals"] if entry["booking_key"] == "equity:trueup:US:2026-06")
     product = next(line for line in us["lines"] if line["account_code"] == "5200")
     trace = client.get(f"/audit/trace/journal-line/{product['id']}", headers=AUDITOR).json()

@@ -11,6 +11,7 @@ from app.equity import models as equity_models  # noqa: F401
 from app.ledger import models  # noqa: F401
 from app.reconcile import models as reconcile_models  # noqa: F401
 from app.record import models as record_models  # noqa: F401
+from app.controls import models as controls_models  # noqa: F401
 from app.world import models as world_models  # noqa: F401
 from app.main import app
 

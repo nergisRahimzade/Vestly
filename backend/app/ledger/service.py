@@ -69,7 +69,7 @@ def open_period(session: Session, entity_code: str, period: str, actor: Actor) -
     existing = find_period(session, entity, period)
     if existing is not None:
         if not existing.accepts_entries:
-            raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409)
+            raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409, rule="CLS-1")
         return existing, False
     year, month = parse_period(period)
     row = Period(entity=entity, year=year, month=month, status="open")
@@ -170,7 +170,7 @@ def _require_balance(drafts: list[LineDraft]) -> tuple[Decimal, Decimal]:
 def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> LedgerError:
     message = str(exc.orig).lower()
     if "period_locked" in message:
-        return LedgerError("period_locked", f"{period} for {entity_code} is locked.", 409)
+        return LedgerError("period_locked", f"{period} for {entity_code} is locked.", 409, rule="CLS-1")
     if "unbalanced_journal" in message:
         return LedgerError("unbalanced_journal", "The journal entry does not balance.", 422)
     if "preparer_is_not_reviewer" in message:
@@ -178,7 +178,7 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
     if "journal_is_final" in message:
         return LedgerError("journal_is_final", "This journal can no longer change.", 409)
     if "booking_key" in message:
-        return LedgerError("already_booked", "A live entry already books this item.", 409)
+        return LedgerError("already_booked", "A live entry already books this item.", 409, rule="DUP-1")
     return LedgerError("ledger_rejected", "The database rejected the journal entry.", 422)
 
 
@@ -204,7 +204,7 @@ def _open_period_for(session: Session, entity: Entity, period: str, verb: str) -
     if period_row is None:
         raise LedgerError("period_not_open", f"Open {entity.code} {period} before {verb}.", 422)
     if not period_row.accepts_entries:
-        raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409)
+        raise LedgerError("period_locked", f"{period} for {entity.code} is locked.", 409, rule="CLS-1")
     return period_row
 
 
@@ -232,8 +232,9 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
         if live is not None:
             raise LedgerError(
                 "already_booked",
-                f"{live.number} in {period_label(live.period)} already books {booking_key}.",
+                f"DUP-1: {live.number} in {period_label(live.period)} already books {booking_key}.",
                 409,
+                rule="DUP-1",
             )
     entry = JournalEntry(
         entity=entity,
@@ -275,11 +276,17 @@ def live_entry_for_key(session: Session, booking_key: str) -> JournalEntry | Non
 
 def draft_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
     """Vestly prepares. A draft must already balance and sit in an open month."""
+    from app.controls.approvals import open_request
+    from app.controls.gate import check_proposal, enforce
+
     require(actor, JOURNAL_DRAFT, "draft a journal entry")
+    enforce(check_proposal(session, payload), actor, "propose_entry")
     entry, entity, period = _build_entry(session, payload, actor.handle)
     session.add(entry)
     _flush(session, entity.code, period)
     _record_entry(session, actor.handle, "journal_drafted", entry, period)
+    # Every draft Vestly makes goes straight to the approvals inbox. Vestly is always the requester.
+    open_request(session, entry, actor.handle)
     _commit(session, entity.code, period)
     return entry
 
@@ -319,9 +326,12 @@ def withdraw_draft(session: Session, entry: JournalEntry, actor: Actor, reason: 
     entry.status = "withdrawn"
     entry.withdrawn_at = datetime.now(timezone.utc)
     entry.withdraw_reason = reason
+    from app.controls.approvals import close_for_withdrawn_entry
+
     period = period_label(entry.period)
     _flush(session, entry.entity.code, period)
     _record_entry(session, actor.handle, "journal_withdrawn", entry, period, reason=reason)
+    close_for_withdrawn_entry(session, entry, actor.handle)
     return entry
 
 

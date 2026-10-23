@@ -35,6 +35,34 @@ statutory_rates:
   DE:
     withholding: "0.25"
     employer_tax: "0.00"
+# The actions each role may take through the policy gate. The model only ever sees the
+# gate's answer: allowed, or refused with one of the rule ids below.
+roles:
+  agent: [read_scoped, compute, propose_entry, request_funding, hold_case, reject_duplicate,
+          ask_human, request_document, request_reopen, propose_precedent]
+  finance_mgr: [approve_entry]
+  controller: [approve_entry, post_entry, lock_period, reopen_period, approve_bank_change,
+               rule_precedent, advance_clock]
+  treasury: [release_funding]
+  hr_ops: [answer, update_bank_master, record_callback]
+  hr_comp: [answer, enter_comp_change]
+  legal: [answer, record_board_approval]
+  payroll_provider: [answer]
+  dept_head: [answer]
+  auditor: []
+  none: []
+rules:
+  ACC-1: An identity may only take the actions its role lists.
+  SOD-1: The approver must differ from the requester and the preparer. Vestly is always a requester.
+  SOD-2: Whoever entered a pay change cannot approve the payroll run that pays it.
+  LIM-1: An entry or funding release above the approval limit needs two approvers, one of them the controller.
+  BND-1: An approval covers the exact entry it was given for; any change to the amount, payee, account, period or case voids it.
+  BNK-1: A bank-detail change needs a confirmed call-back logged within the call-back window before the pay run. Email is never enough.
+  GRT-1: No stock expense without the board-approved grant on file.
+  CTR-1: Employer contributions must equal the policy rate times eligible pay, to the cent.
+  DUP-1: No entry for an item a live entry already books.
+  CLS-1: Nothing posts into a locked period. Reopening is a controller action with a reason.
+  PRV-1: Vestly reads one person's pay only inside an open case on that person.
 controls:
   # LIM-1: an entry or funding release above this needs two approvers. Not the same
   # number as materiality, which decides who looks at a difference.
@@ -45,6 +73,12 @@ controls:
   # An unanswered question gets a reminder after this many days, and escalates after this many reminders.
   reminder_after_days: 2
   escalate_after_reminders: 2
+  # Where an unanswered approval goes next.
+  escalation:
+    finance_mgr: controller
+    treasury: controller
+  # The simulated clock starts on the day the June drop arrives.
+  clock_start: "2026-07-02"
 facts:
   employment_dates:
     authority: hr
