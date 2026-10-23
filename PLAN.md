@@ -1,466 +1,696 @@
 # Vestly build plan
 
-Vestly is the finance teammate for **Northlight Labs**, a fictional 300-person software startup with a US parent and subsidiaries in the UK and Germany. It fills two seats: **payroll accountant** and **equity compensation accountant**. Every month it reconciles HR, payroll, the equity platform, the bank, and the ledger, drafts the journal entries, catches silent errors, asks the right person, waits for the answer, and keeps the reasoning.
+Vestly is an agentic AI system that fills two seats on the finance team of **Northlight Labs**, a fictional software startup with a US parent and subsidiaries in the UK and Germany: the **payroll accountant** and the **equity compensation accountant**. Every month it reconciles the HR system, the payroll provider, the equity platform, the bank and the ledger, drafts the journal entries, catches the silent errors that build up between systems, asks the right person at the right moment, and records the full reasoning behind every call.
 
-The longer brief calls the company Northwind Labs. This plan and the code use **Northlight Labs**.
+This is a practice build for the CalHacks Hyphenate track. There is no sponsor API and no event schedule. Everything is checked against what the Hyphenate brief asks of participants (the five hard parts, the four judging questions, and what to submit).
 
-**One line on the seats (for the submission):** *Vestly fills the payroll accountant and equity compensation accountant seats for a three-entity startup. It drafts every entry, and a person still approves it.*
+The design follows the Vestly workpaper (VS-01) tab by tab: **Architecture** (section 2), **Agent & model** (section 3), **Controls** (section 4), **Data & memory** (section 5), **Build** (section 8) and **Proof & demo** (section 7). Where the workpaper and the code already written disagree, section 9 says which wins.
 
-This document has four parts:
+**One error, one period.** An error is booked exactly once, in the first open period after the fact is known, and never again in another month. What was learned carries forward as a precedent, which is what the brief means by "what happened in March should change what the system does in June".
 
-1. What Hyphenate asks for, and where each ask is answered in the build.
-2. The rules Vestly works by: accounting, source ranking, controls.
-3. The company world and the scored anomalies.
-4. The task list, split by layer: **Data**, **Backend**, **AI/ML**, **Frontend**.
+**One line on the seats:** *Vestly fills the payroll accountant and equity compensation accountant seats for a three-entity startup. It drafts every entry and funding request, and a person still approves it.*
 
----
+Contents:
 
-## 1. What Hyphenate asks for
-
-### The four judging questions
-
-| Question | What a judge must be able to see | Tasks |
-| --- | --- | --- |
-| **Is it real enough?** Realistic data, a messy problem, proof it works. | Three entity books in three currencies. Five source systems that disagree. OCR-noisy emails. Eleven planted anomalies plus unlabeled mess. An answer key and a scorer that report detection, false alarms, source calls, routing, and balance. A held-out scenario a judge can trigger. | 3, 7, 19, 20 |
-| **Would you hire it?** For which seats, with limited access, a clean record, and knowing when to ask. | Two seats with a defined output per month. Identities issued by the server. The agent cannot approve, post, release cash, lock or reopen a period, or edit policy. It sees department totals by default. Every action is in a hash-chained log. Materiality and policy decide when it asks. | 1, 2, 8, 9, 10, 13 |
-| **Did we see something new?** | Payroll and four-year equity in one system, so a 2024 grant still makes a 2026 entry. A ranking per fact. Precedents: a March ruling changes June behavior. Autonomy: a file drop starts the close without anyone pressing a button. | 5, 8, 13 |
-| **The moment.** Catches what others missed, recovers, or defends a decision. | The first sixty seconds of the demo (section 1.3). | 16 |
-
-### The five hard parts
-
-| Hard part | What Vestly does | Tasks |
-| --- | --- | --- |
-| **Sources disagree** | Every fact has a ranked list of sources in the policy file. A finding quotes each source's claim, names the trusted one, and says why. | done, 6 |
-| **Time** | A ruling becomes a precedent with an owner, a scope, and a reason. Old grants keep producing entries. A locked month stays locked; a late fact becomes a current-period correction or a controller-approved reopen. As-of replay answers "what did we know then". | 5, 8, 10 |
-| **Working with others** | A routing map says who owns each question. Cases wait for days on a simulated clock, send reminders, handle partial answers, and treat a "no" as an input that changes the plan. | 8, 9, 12 |
-| **Limits** | Least-privilege tool allowlist. Separation of duties is checked by the database: the preparer cannot approve, the person who changed pay cannot approve that payroll run, and dual approval is required above the cash threshold. | 1, 2, 8 |
-| **Explainable and accountable** | Every decision stores the documents, quotes, rule, policy hash, precedent, and person. A reviewer starts from any journal line and walks back to the source rows. | 10, 14, 17 |
-
-### 1.3 The moment
-
-The demo video opens with this sequence. Total about sixty seconds.
-
-1. **Catching what others missed.** The June close starts by itself when the June file drop lands. Vestly lays Maya Chen's bank-change email next to the HR bank master and the controller's March ruling on Jonah Hale.
-2. It holds Maya's funding line and says why in one paragraph that quotes the March precedent.
-3. **Defending a decision.** The controller pushes back: "the email looks official, just pay it." Vestly answers from the stored record: the source ranking, the precedent, the policy hash. The draft does not change.
-4. **Recovering.** The bank shows the US June batch only partly cleared. Vestly requests funding for the two legitimate missing lines only, and refuses a full re-send. The release button belongs to treasury, and the agent identity has no route to it.
-
-Second beats, shown in the live walkthrough:
-
-- **Forfeitures.** "Why did June stock expense drop?" Vestly traces it to Priya's and Hannah's forfeitures, each linked to an HR termination row and a grant.
-- **Reopen.** HR answers the Priya question with a corrected date that falls in locked March. Vestly asks the controller to reopen through the approval path instead of rewriting history.
-- **Limits.** Someone asks for everyone's salary. Vestly declines and offers department totals.
-
-### What to submit, and where it comes from
-
-| Submission item | Where it comes from | Task |
-| --- | --- | --- |
-| Demo video that opens with the moment | Recorded from the moment screen | 16, 21 |
-| Live demo, with a scenario chosen by a judge | Scenario injector plus a reset script | 19, 21 |
-| One line on the seats | This document, top | 21 |
-| Proof: what's real, what's simulated, how we know | Scorecard page, answer key, a "what is simulated" panel, the README | 7, 17, 21 |
+1. Where the build stands
+2. Architecture
+3. Agent and model
+4. Controls
+5. Data and memory
+6. The company world
+7. Proof and demo
+8. Build: stack, layout, rules
+9. Decisions
+10. Tasks
 
 ---
 
-## 2. The rules Vestly works by
+## 1. Where the build stands
 
-These live in `backend/app/policy/northlight.yaml`. The agent reads the file and cannot write it. Every finding and every decision stores the policy version and the hash of the file content. Simplifications are labeled in the file.
+### Done and tested
 
-### Books
+75 tests pass on SQLite (`backend/scripts/test.ps1`). The Postgres guard tests skip unless Postgres is running.
 
-- Each legal entity has its own ledger in its functional currency: US in USD, UK in GBP, DE in EUR. One journal never mixes entities.
-- A consolidation view translates to USD at the reference rate. A management-pack rate inside the policy band is an explained difference, not an exception.
-
-### Chart of accounts
-
-Existing accounts stay. These are added when the task that needs them lands:
-
-| Code | Name | Added in |
+| Area | What exists | Files |
 | --- | --- | --- |
-| 1200 | Employee overpayment receivable | Task 4 |
-| 1210 | Payroll suspense (cash out, person not confirmed) | Task 4 |
-| 2150 | Accrued wages | Task 4 |
-| 2160 | Accrued employer taxes and contributions | Task 4 |
+| Ledger | Three entity books, chart of accounts, draft → approved/rejected → posted, preparer ≠ reviewer as a database check, locked months refused by triggers | `app/ledger/*` |
+| Identity | 14 server-side identities, bearer tokens stored as hashes, one permission map in code, agent sees totals only, individual reads logged | `app/auth/*`, `app/world/access.py` |
+| World | Generator with named plant functions, March (closed) and June (open) drops, 15-person cast, signed grants, comp actions | `app/world/drops.py`, `fixtures/` |
+| Policy | Versioned YAML with a content hash, ranked sources per fact, materiality at 25.00 USD with an always-escalate list | `app/policy/*` |
+| Reconcile | Append-only runs with input document hashes; one fact (employment dates) plus the FX band | `app/reconcile/*` |
+| Payroll drafts | Per entity and department at policy contribution rates, UK accrual and reversal, overpayment receivable, suspense | `app/payroll/*` |
+| Equity subledger | Grant-by-grant schedule, cliff, forfeiture before and after the cliff, no expense without approval, transfer follows entity | `app/equity/*` |
+| Answer key | 11 anomalies, true negatives, unlabeled mess | `fixtures/answer_key.json` |
 
-### Payroll entry, per entity and department
+Not built yet: the agent, the model client, tools, the policy gate, the evidence log, precedents, cases and the approvals inbox, the posting service, detectors beyond one, the scorer, replay and challenge, the UI, and most of the data volume.
 
-- Debit wage expense (5000), employer tax expense (5100), and employer pension or social expense (5110).
-- Credit net pay to wages payable (2100), withholdings payable (2200), employer taxes payable (2210), and contributions payable (2220).
-- When the bank shows the cash left, debit wages payable and credit cash.
-- When a pay period crosses month-end, accrue the worked but unpaid days at the HR rate (2150, 2160). Reverse the accrual on the first day of the next period.
-- Pay for days after an HR termination date is an overpayment. It goes to 1200 and is routed to HR and payroll for recovery. It is not a quiet wage reduction.
-- Cash that already left for a person HR has not confirmed goes to suspense (1210), not wages.
+### Defects in the current code
 
-### Employer contributions
-
-- US 401(k) match: policy rate on gross wages.
-- UK pension: policy rate on pensionable pay.
-- Germany social contributions: policy employer rate on gross pay.
-- A register amount that differs from the policy rate is an exception sent to the payroll provider. Vestly drafts from the policy rate and shows the difference.
-
-### Equity: equity-classified awards, straight-line
-
-- Grant-date fair value is an input on the signed grant. Vestly does not price options.
-- Expense is fair value spread in equal months over the 48-month service period. This is a policy election allowed for service-only awards under ASC 718. Cumulative expense is never below the vested portion.
-- Forfeitures are recognized when they occur, which is also a policy election. Before the cliff, a termination reverses all expense on the grant. After the cliff, expense recognized for the unvested portion reverses in the termination month. No expense runs after the HR termination date.
-- Expense follows the employee's entity and department in HR for that month, so a transfer moves the expense.
-- A grant without board approval recognizes no expense until approval arrives.
-- Each grant has its own expense schedule (the equity subledger). The ledger is reconciled against the subledger, not against department totals.
-
-### Closed periods
-
-- Vestly can propose a current-period correction that explains a prior-period fact.
-- It cannot post into a locked month. Reopening is a controller action, recorded with a reason, and relocking is required after the correction posts.
-
-### Materiality
-
-- One threshold: **25.00 USD**, set in the policy file. UK and DE differences are translated to USD at the period's reference rate before comparing. With no reference rate, Vestly escalates rather than guess.
-- At or below the threshold, and only when the trusted sources agree, Vestly drafts and asks for a normal approval. Above it, Vestly escalates with the conflict attached.
-- `app/policy/materiality.py` applies the rule. `tests/test_materiality.py` tests the rule itself; from task 3, the answer-key test checks that the data exercises both sides of the line, so the threshold can be re-checked once the full data exists.
-- It always escalates, at any amount, on: a bank-detail change, a closed-period effect, a missing grant approval, a forfeiture, an unconfirmed person, and a funding mismatch.
-
-### Source ranking
-
-One ranking per fact. Already in the policy file.
-
-| Fact | Authority | The other systems |
-| --- | --- | --- |
-| Employment status and dates | HR | Payroll and equity are downstream |
-| Authorized compensation | Approved compensation action | The register is what was paid, not what was approved |
-| Cash that moved | Bank | The register is the instruction |
-| Withholdings and employer taxes on a completed run | Payroll register | The ledger is what was booked |
-| Grant terms and approval | Signed grant and board approval | The equity platform is a system of process |
-| Shares still outstanding | Grant terms plus HR termination date | The platform's vesting flag is checked, not trusted |
-| What the books say | Ledger | Never settles a conflict with HR or the bank |
-| Where net pay is sent | HR bank master, after dual approval | Email is not a source |
-| GBP to USD translation | Reference rate | The management pack rate is explained inside the band |
-
-### Controls
-
-**Identities.** The server issues them. A caller presents a token. The role comes from the server's identity table, never from a header the caller writes.
-
-| Identity | Role | Can | Cannot |
+| # | Defect | Where | Effect |
 | --- | --- | --- | --- |
-| `vestly` | agent | Read sources (scoped), reconcile, search precedents, draft journals, open cases, ask, request approval, request funding, record decisions, answer from the record | Approve, reject, post, release cash, lock or reopen, edit policy, read one person's pay without an open case on that person |
-| `dana.ruiz` | controller | Approve or reject drafts, post, lock, reopen, mark a ruling as a precedent | Prepare an entry they approve |
-| `lee.park` | hr_ops | Answer date and person questions, update the bank master | Approve a payroll run that contains a pay change they entered |
-| `sam.kerr` | hr_comp | Enter compensation changes | Approve the run that pays them |
-| `alex.moreau` | treasury | Release funding | Release above threshold alone |
-| `jordan.hayes` | treasury | Second release approval above threshold | Request and release the same batch |
-| `morgan.li` | legal | Answer grant-approval questions, record a board approval | Post |
-| `payroll.provider` | payroll_provider | Answer tax and contribution questions | Read the ledger |
-| `head.engineering`, `head.product`, `head.gtm`, `head.ga` | dept_head | Answer cost-center questions for their own department | See other departments' pay |
-| `riley.auditor` | auditor | Read the audit log and replay, read everything as of a date | Change anything |
-| `stranger` | none | Nothing | Everything |
-
-**Separation of duties, enforced in the database:**
-
-- A journal's `prepared_by` cannot equal its `approved_by`.
-- The identity that entered a pay change cannot approve the run that pays it.
-- Funding above the cash threshold needs two different treasury identities.
-- The requester of a funding batch cannot release it.
-
-**Data access.** The agent's default views are totals per entity and department. Individual pay is returned only for people with an open case, and every such read is logged.
-
-### Case workflow
-
-Every exception is a case with one state at a time:
-
-`detected` → `waiting_on_human` → (`answered` | `partially_answered` | `rejected` | `expired`) → `drafted` → `approved` → `posted_by_human`
-
-Funding: `funding_requested` → `funding_released_by_human` (or `funding_held`).
-
-A case stores who owns the question, when it is due, how many reminders went out, and the answer. State lives in Postgres, so a restart loses nothing. A rejection the controller marks as a precedent becomes one.
-
-### Audit event
-
-Each event stores: actor, time (real and simulated), action, subject, policy version and hash, precedent ids, source document ids and content hashes, a short quote, the payload, and a SHA-256 hash of the canonical payload chained to the previous event's hash. As-of replay rebuilds an explanation from stored payloads, not from live rows that may have changed.
+| G1 | **Stock expense is double-booked.** June already holds the platform-fed equity entries as posted (US 4,750.00, UK 2,000.00, DE 2,500.00); `draft_equity` drafts the full subledger amount on top. | `app/equity/service.py` | Approving the drafts books US June stock expense at 8,000.00 instead of 3,250.00. |
+| G2 | **Re-drafting fails.** Payroll, then equity, then payroll again returns 422: journal numbers come from `count()+1` and are reused after drafts are deleted. | `app/ledger/service.py` | The agent cannot re-run a case or a close. |
+| G3 | **The subledger reads the generator's hidden truth.** `schedule_for` uses `person_by_number` and `assignment` from `drops.py`, not the loaded HR rows. | `app/equity/schedule.py` | The answer comes from outside the world; replay and injected scenarios do not change it. |
+| G4 | **Statutory rates come from the generator** (`drops.ENTITY_RATES`); a test oracle lives in production code. | `app/payroll/*` | Policy is not the only rule source. |
+| G5 | **The reconciler reads the rate card from a fixture file**; the loader hard-codes March and June. | `app/reconcile/engine.py`, `app/world/loader.py` | No new month or document can arrive at run time. |
+| G6 | **A read writes.** `GET /equity/schedules` deletes and rebuilds the subledger. | `app/equity/service.py` | Reads race; no history to replay. |
+| G7 | **Drafts are hard-deleted on re-run.** | payroll and equity `_clear_prior_drafts` | The evidence of what Vestly proposed is lost. |
+| G8 | **No reopen.** | `app/ledger/models.py`, `guards.py` | A late fact in a locked month has no approved path. |
+| G9 | **Only March and June exist.** | `drops.MONTHS` | "Locked April" is not a ledger fact; no continuous history. |
+| G10 | **SQLite has no balance trigger.** | `app/ledger/guards.py` | The database-level balance claim holds only on Postgres. |
+| G11 | **Policy lacks numbers the controls need**: approval limit, call-back window, EUR reference rate, statutory rates, reminder waits. | `app/policy/northlight.yaml` | Rules LIM-1 and BNK-1 cannot be enforced. |
+| G12 | **Detection and privacy collide**: the agent may not read an email body or one person's rows until a case exists, and cases come from detection. | `app/world/access.py` | Resolved by D5. |
+| G13 | **Payroll drafts follow the register where HR disagrees** (Tomas in DE, Evan's retro lump not held). | `app/payroll/service.py` | Contradicts the answer key. |
+| G14 | **Routing disagrees with the key**: forfeitures ask `lee.park`, the key says `dana.ruiz`. | `app/equity/service.py` | Scored as wrong routing. |
+| G15 | **Dev tokens are guessable** (HMAC of the handle with a public default secret). | `app/auth/tokens.py` | The UI needs a login that issues tokens, and a real secret. |
+| G16 | **A prior-period error is re-booked every month.** Priya's 1,500.00 March overpayment receivable is drafted again in April, May and June (reproduced with April and May loaded). | `app/payroll/service.py` `_overpayment_journal` | One March error books three times; breaks "one error, one period". Fixed first, before task 6. |
 
 ---
 
-## 3. The company world
+## 2. Architecture
+
+Four lanes and one evidence log. The model sits inside the agent core and never touches money directly.
+
+```text
+SOURCES              SOURCE ADAPTER        AGENT CORE                         CONTROLS & RECORD
+HR system ─┐                               ┌─────────────────────────┐        ┌──────────────────────┐
+Payroll   ─┤                               │ Claude Opus 5.5         │        │ Policy gate          │
+Equity    ─┼──►  one interface ────────►   │ reads, judges, asks     │──────► │ roles · rules · SoD  │
+Grants &  ─┤     mock backend over         ├─────────────────────────┤        ├──────────────────────┤
+ approvals │     the generated world       │ Tool registry           │        │ Approvals inbox      │
+Ledger    ─┤                               │ strict JSON schemas     │        ├──────────────────────┤
+Bank +    ─┘                               ├─────────────────────────┤        │ Posting service      │
+ inbox                                     │ Deterministic services  │        │ idempotent, bank-    │
+                                           │ match · contributions · │        │ confirmed            │
+                                           │ SBC · duplicates · FX · │        ├──────────────────────┤
+                                           │ bank rec                │        │ Evidence log         │
+                                           ├─────────────────────────┤        │ append-only, hashed  │
+                                           │ Outcome, decided by     │        ├──────────────────────┤
+                                           │ code from the record    │        │ Precedents           │
+                                           └─────────────────────────┘        │ As-of replay ·       │
+                                                                              │ challenge            │
+Controller and managers ─────────► Web UI: approvals inbox · case timeline · evidence
+```
+
+Every tool call passes the policy gate. Entries post and funding goes out through the posting service only after a human approval. Humans act through the UI; precedents reach the model through a read tool.
+
+### Components
+
+| Component | Responsibility | Implementation |
+| --- | --- | --- |
+| Source adapter | One interface for every source and action; the agent core never reads tables or files directly | Python `Protocol`, one mock backend over the generated world |
+| Agent loop | Runs one case: model turns, tool calls, stops when the model stops calling tools | Anthropic Python SDK, manual loop |
+| Tool registry | Tool definitions, input validation, which tools are gated | Pydantic models → JSON schema, `strict: true` |
+| Deterministic services | Register match, contributions, stock expense, duplicate keys, FX, bank reconciliation | Plain Python with `Decimal`, unit-tested; mostly exists |
+| Policy gate | Allow or refuse each action by role, limits, separation of duties | `policy.yaml` rules + a small evaluator |
+| Approvals inbox | Questions and approval requests with due dates and escalation | Table + UI view; identity from the login session |
+| Posting service | Posts approved entries and releases approved funding once; confirms with bank and ledger | Idempotency key per entry or payment line |
+| Evidence log | Append-only record of every fact, call, decision and approval | Table with hash chain; rows never updated |
+| Precedents | Human rulings with scope and expiry, retrieved for later cases | Table + structured match (employee, entity, rule) |
+| Web UI | Inbox, case timeline, evidence drill-down, challenge box | React (Vite) |
+
+### One case, start to finish
+
+1. A payroll register, vest report, bank file or email arrives through the adapter. A **case** opens and each document is stored once with its SHA-256 hash.
+2. Unstructured documents are read by the model with **structured output**. Code checks every extracted value against the document text.
+3. The model runs checks through tools: HR record, plan and grant terms, approvals, ledger, bank, precedents. Arithmetic happens in deterministic services.
+4. The model proposes an action (draft, hold, reject, ask). The **policy gate** allows or refuses it; both are written to the evidence log.
+5. When the model stops calling tools, **code decides the case outcome** from the recorded results, not from the model's final text.
+6. Drafts and funding requests wait in the **approvals inbox**. A human approves or declines. A decline can become a precedent.
+7. The posting service posts approved entries and releases approved funding with an idempotency key. The bank and ledger confirm, and the case closes reconciled.
+
+---
+
+## 3. Agent and model
+
+### Judgment to the model, bookkeeping to code
+
+| The model does | Code does |
+| --- | --- |
+| Read unstructured documents: emails, scanned registers, notes from HR | All money math: matching, contributions, stock expense, FX, reconciliation |
+| Decide which checks a case needs and in what order | Duplicate detection on normalized keys |
+| Notice what is unusual and explain why | Source ranking per fact from the authority table |
+| Write the question to a human, with the right context | Allowing or refusing every action |
+| Turn a human's free-text reply into a structured answer | Deciding the case outcome from recorded results |
+| Answer a challenge from the evidence record | Posting and funding, once, with an idempotency key |
+| Propose the scope of a new precedent | Routing a question to its owner |
+
+### The loop
+
+```text
+Case opens ─► Model turn ─► Tool call (strict JSON) ─► Policy gate ─► Run tool + evidence
+                  ▲                                                          │
+                  └──────── tool_result: honest ok / fail / refused ◄────────┘
+             no more tool calls ─► Outcome decided by code from recorded results
+```
+
+A refused action comes back to the model as a refusal with a rule id it can explain, never as a silent failure. The loop has a round limit; hitting it makes the case "needs a person", never "done".
+
+### Model configuration
+
+| Setting | Value | Reason |
+| --- | --- | --- |
+| Model | `claude-opus-5-5`, from an environment variable | One model means one prompt cache; try a lower effort before adding a second model |
+| Effort | `output_config.effort`: `high` for case decisions, `low` for extraction | Opus 5.5 defaults to `medium`, so set it per route |
+| Thinking | Adaptive, the default; it cannot be disabled on Opus 5.5 | We show the evidence record, not the model's reasoning |
+| Tools | `strict: true`, `additionalProperties: false`, every field in `required` | Tool inputs always match the schema |
+| Tool choice | `auto` only | Forced `any` or `tool` returns a 400 on Opus 5.5; steer through the prompt |
+| Parallel calls | Allowed; all results returned in one user message | Splitting results teaches the model to stop calling in parallel |
+| Extraction | `client.messages.parse(..., output_format=PydanticModel)` → `parsed_output`; documents as content blocks | Validated fields in one call; we check the values against the text ourselves |
+| Caching | Stable system prompt and a fixed tool list first; check `usage.cache_read_input_tokens` | Repeated cases reuse the cached prefix |
+| Refusals | Beta `server-side-fallback-2026-07-01` with `fallbacks="default"`, plus a `stop_reason == "refusal"` check that moves the case to "needs a person" | A declined request is retried on a fallback model instead of stalling |
+| Limits | `max_tokens` 16,000 per turn; at most 25 rounds per case | A runaway case becomes "needs a person" |
+| Offline mode | A scripted model that returns fixed tool calls and text per case | Tests and the recorded demo run without an API key and give the same result every time |
+
+Pricing for Opus 5.5: $4 per million input tokens, $20 per million output, cached reads $0.20.
+
+### The tool catalog
+
+Each description says what the tool is for and what it is not for, because the description is what the model routes on. Approving, posting, releasing funding, locking or reopening a period, and editing policy are deliberately absent: those happen after a human acts.
+
+| Tool | Kind | What it does | Seat |
+| --- | --- | --- | --- |
+| `get_case` | read | The case, its documents and current findings | both |
+| `get_policy` | read | Authority table, rules, rates, thresholds, with the policy hash | both |
+| `get_employee_record` | read | HR record for one employee on an open case: entity, status, dates, bank account history | both |
+| `get_register_lines` | read | Payroll register lines for one employee on an open case, or entity and department totals | payroll |
+| `get_comp_actions` | read | Approved compensation changes, who entered and who approved | payroll |
+| `get_signed_grant` | read | Signed grant terms and board approval | equity |
+| `get_equity_platform` | read | What the equity platform shows for a grant | equity |
+| `get_ledger_entries` | read | What was booked for an entity, period, account or case | both |
+| `get_bank_transactions` | read | What actually moved, with confirmations | both |
+| `get_document` | read | A document body by hash (email, register, vest report), on an open case only | both |
+| `search_precedents` | read | Rulings in force on a date, matching employee, entity or rule | both |
+| `match_register` | compute | Register against HR records and approved comp changes; returns line differences | payroll |
+| `compute_contributions` | compute | Employer contributions owed against booked, to the cent | payroll |
+| `compute_sbc_expense` | compute | Subledger expense, reversals and the true-up against the ledger | equity |
+| `check_duplicate` | compute | Normalized payroll, payment or grant key against booked history | both |
+| `reconcile_funding` | compute | Funding instructions against bank confirmations; lists cleared, missing and diverted lines | payroll |
+| `propose_entry` | gated | Drafts a journal entry for approval; never posts | both |
+| `request_funding` | gated | Requests release of named payment lines with an idempotency key; never pays | payroll |
+| `hold_case` | gated | Holds with a reason code and evidence ids | both |
+| `reject_duplicate` | gated | Rejects an item as already booked, linking the entry | both |
+| `ask_human` | gated | Puts a question in the inbox for the owner the routing map names, with a due date | both |
+| `request_document` | gated | Asks HR, legal or the provider for a record or a corrected export | both |
+| `request_reopen` | gated | Asks the controller to reopen a locked period, with the reason | both |
+| `propose_precedent` | gated | Suggests a scope for a ruling; the controller confirms | both |
+
+### Core code shape
+
+```python
+# agent/loop.py, one case
+def run_case(case_id: str, seat: Seat) -> CaseOutcome:
+    messages = [{"role": "user", "content": case_brief(case_id)}]
+    for _ in range(MAX_ROUNDS):
+        response = model.turn(system=SYSTEM_PROMPT, tools=seat.tools, messages=messages)
+        if response.stop_reason == "refusal":
+            return outcomes.needs_human(case_id, "model declined the request")
+        messages.append({"role": "assistant", "content": response.content})
+        calls = [block for block in response.content if block.type == "tool_use"]
+        if not calls:
+            break
+        messages.append({"role": "user", "content": [execute(case_id, seat, call) for call in calls]})
+    else:
+        return outcomes.needs_human(case_id, "round limit reached")
+    return outcomes.decide(case_id)  # from the evidence log, not the model's text
+
+
+# agent/execute.py, every call is validated, gated and recorded
+def execute(case_id: str, seat: Seat, call) -> dict:
+    spec = REGISTRY[call.name]
+    try:
+        args = spec.input_model.model_validate(call.input)
+    except ValidationError as error:
+        result = ToolResult.fail("invalid_input", str(error))
+    else:
+        verdict = gate.check(spec, args, actor=seat.identity, case_id=case_id)
+        result = spec.run(case_id, args) if verdict.allowed else ToolResult.refused(verdict.rule_id, verdict.reason)
+    evidence.append(case_id, kind="tool_call", actor=seat.identity, tool=call.name, args=call.input, result=result)
+    return {"type": "tool_result", "tool_use_id": call.id, "content": result.to_json(), "is_error": not result.ok}
+```
+
+`model.turn` wraps `client.beta.messages.create` with the settings above, or the scripted model in offline mode.
+
+### System prompt
+
+Short, stable, about the job. Tool-specific guidance lives in tool descriptions, so the prompt does not grow and stays cached.
+
+- **Role:** payroll accountant or equity compensation accountant for Northlight Labs; one case at a time.
+- **Goal:** every entry and funding request is supported by the HR record, the plan and grant terms, the approvals, and the bank; nothing else.
+- **Sources:** the authority table, stated once.
+- **When to ask:** only when a rule or precedent requires a person, or the evidence conflicts and no ranking settles it.
+- **Honesty:** say what could not be verified; never state a figure that did not come from a tool result.
+
+---
+
+## 4. Controls
+
+Controls live outside the model, in plain code a reviewer can read. The model only ever sees the outcome: allowed, or refused with a rule id it can explain.
+
+### Policy rules
+
+Added to `backend/app/policy/northlight.yaml`, next to the existing authority table and materiality.
+
+```yaml
+roles:
+  agent:        [read_scoped, compute, propose_entry, request_funding, hold_case, reject_duplicate,
+                 ask_human, request_document, request_reopen, propose_precedent]
+  controller:   [approve_entry, post_entry, lock_period, reopen_period, approve_bank_change, rule_precedent]
+  treasury:     [release_funding]
+  hr_ops:       [answer, update_bank_master, record_callback]
+  legal:        [answer, record_board_approval]
+
+rules:
+  SOD-1: approver must differ from requester           # the agent is always a requester
+  SOD-2: whoever entered a pay change cannot approve the run that pays it
+  LIM-1: entry or funding over 25,000.00 USD equivalent needs two approvers, one of them the controller or a second treasurer
+  BNK-1: a bank-detail change needs a call-back record within 5 days before the pay run; email is never enough
+  GRT-1: no stock expense without the board-approved grant on file
+  CTR-1: employer contributions must equal plan rate × eligible pay, to the cent
+  DUP-1: no entry for a payroll, payment or grant key already booked
+  CLS-1: nothing posts into a locked period; reopening is a controller action with a reason
+  PRV-1: one person's pay is readable by the agent only inside an open case on that person
+```
+
+| Rule | Enforced where | What the demo shows |
+| --- | --- | --- |
+| SOD-1, SOD-2 | Approvals service comparing session identities; database check on journals | A requester approving their own 62,000.00 accrual is refused; `sam.kerr` cannot approve Evan's run |
+| LIM-1 | Policy gate on `propose_entry` and `request_funding` | Large entries and batches wait for two approvals |
+| BNK-1 | Policy gate, checking the HR bank master history and call-back log | Maya's diverted payment is held |
+| GRT-1 | Policy gate, checking the board approval on the signed grant | Lukas's expense is blocked; legal is asked |
+| CTR-1, DUP-1 | Deterministic services before any proposal | Amira's contribution shortfall flagged; Nadia's duplicate grant rejected |
+| CLS-1 | Database triggers plus the reopen path | Priya's corrected date goes through a controller reopen |
+| PRV-1 | Read tools and the access log | "Show me everyone's salary" is declined with department totals offered |
+
+### Identity
+
+- The agent acts under one identity per seat, `vestly.payroll` and `vestly.equity`, both with the `agent` role, each with its own tool list. Neither holds approval rights.
+- Human identities come from the login session in the UI. A tool argument naming an approver is ignored.
+- Approvals are bound to the exact entry or payment: amount, payee, account, period and case. Changing any of them voids the approval.
+- Every refusal is logged with its rule id, so the record shows what the agent tried and what stopped it.
+
+### The approval path
+
+```text
+Agent ──propose_entry 48,210.00──► Policy gate ──needs 2 approvers──► Approvals ──notify, due 24 h──► Controller
+Controller ──approve (session id)──► Approvals ──approver ≠ requester ✓──► Policy gate
+Policy gate ──post and fund with idempotency key──► Posting service ──instruction──► Bank
+Bank ──confirmation──► Posting service ──reconciled · evidence closed──► Agent
+```
+
+If the controller declines, the case is held, the answer and its reason are stored (and become a precedent if the controller marks it), and the owner of the source is told what is missing. If nobody answers by the due date, the request escalates to the next role.
+
+---
+
+## 5. Data and memory
+
+### Data model
+
+Everything hangs off the **case**: its employee, the register or vest report, plan and grant terms, grant approvals, approvals, postings and funding, bank and ledger rows, the evidence it wrote, and the precedents it used. Documents are stored once with a SHA-256 hash; evidence rows point at the hash, so a later edit to a document cannot change what a past decision was based on.
+
+### The authority table
+
+The ranking is decided per fact, not per document. The agent cites the row it applied in every decision. It already lives in the policy file.
+
+| Fact | Trusted source | Then | Why |
+| --- | --- | --- | --- |
+| Employment status and dates | HR system | Payroll register, equity platform | Payroll processes what it is told; HR holds the event |
+| Authorized compensation | Approved compensation action | Payroll register | The register is what was paid, not what was approved |
+| Cash that moved | Bank confirmation | Payroll register, ledger | The ledger records intent; the bank records what moved |
+| Withholdings on a completed run | Payroll register | Ledger | The ledger is what was booked |
+| Grant terms and approval | Signed grant + board approval | Equity platform | The platform is a system of process |
+| Shares still outstanding | Grant terms + HR termination date | Equity platform | The vesting flag is checked, not trusted |
+| Contribution rate | Policy | None | A register cannot change plan terms |
+| Employee bank account | HR bank master after call-back | None | Email is never an authority for bank details |
+| FX rate | Reference rate for the date | Management pack inside the band | One rate per date keeps USD, GBP and EUR consistent |
+| What was booked | Ledger | None | The accounting record; never settles a conflict with HR or the bank |
+
+### The evidence record
+
+Every decision writes one row that answers "why" without asking the model again. Rows are never updated; a correction is a new row that points at the old one. Rows are hash-chained so tampering is detectable.
+
+```json
+{
+  "id": "ev_0412",
+  "case_id": "case_112",
+  "at": "2026-06-28T09:12:03Z",
+  "sim_at": "2026-06-28",
+  "actor": "vestly.payroll",
+  "action": "hold_case",
+  "reason_code": "bank_change_unverified",
+  "basis": [
+    {"type": "document", "doc_sha256": "9f3c…", "quote": "Please updte my bank acount before the June run."},
+    {"type": "rule", "id": "BNK-1"},
+    {"type": "precedent", "id": "P-2026-03-001", "decided_by": "dana.ruiz", "on": "2026-03-06"}
+  ],
+  "authority_row": "pay_destination",
+  "policy_hash": "…",
+  "unverified": ["call-back record"],
+  "supersedes": null,
+  "prev_hash": "…",
+  "hash": "…"
+}
+```
+
+### Precedent memory
+
+A human ruling becomes a precedent with a scope the model proposes and the controller confirms: one employee, one entity, an employee group, or a whole rule. Later cases call `search_precedents` with employee, entity and rule ids and get back the matches in force on that date. Precedents expire or are overruled, never deleted.
+
+```json
+{
+  "id": "P-2026-03-001",
+  "rule": "BNK-1",
+  "scope": {"entity": "US"},
+  "ruling": "Reject bank changes without a call-back",
+  "reason": "Request came only by email; HR bank master unchanged",
+  "decided_by": "dana.ruiz",
+  "valid_from": "2026-03-06",
+  "expires": null,
+  "overruled_by": null
+}
+```
+
+### As-of replay and challenge mode
+
+- **Replay:** for any past decision, rebuild what the agent knew that day: document versions by hash, ledger and bank rows dated on or before it, precedents valid then, and the policy version. Because the evidence log is append-only and dated, replay is a filtered read, not a re-run of the model.
+- **Challenge:** a reviewer questions a decision in the UI. The model answers only from that decision's evidence rows and the replayed state, citing event ids. If the challenge shows a mistake, the fix goes through the normal approval path as a new row.
+
+### Realistic data
+
+A generator builds the company: January to June 2026, about 320 employees across the three entities, grants for most of them, monthly payroll registers per entity, monthly vest reports, a bank statement, a ledger export, an inbox of employee and HR emails, and a call-back log. Some registers and emails are rendered as PDFs with scan and OCR noise. Anomalies are planted with a hidden answer key the agent never sees; the scorer does.
+
+---
+
+## 6. The company world
 
 ### Entities and departments
 
-- Northlight Labs, Inc. (US, USD)
-- Northlight Labs Ltd (UK, GBP)
-- Northlight Labs GmbH (Germany, EUR)
+- Northlight Labs, Inc. (US, USD), Northlight Labs Ltd (UK, GBP), Northlight Labs GmbH (Germany, EUR)
 - Departments: Engineering, Product, GTM, G&A
+- UK pay runs 26th to 25th, so the UK month-end accrual is real. US and DE pay calendar months.
+- January to May are closed and locked before June runs. June is the live close. July is a held-out month.
 
-### Months
+### The scored cast
 
-The test world runs **March 2026** (closed before June runs) and **June 2026** (the live close), with grants from 2024 and 2025 already in motion. **July 2026** is the held-out month, generated but not shown until a judge asks.
+About 300 further employees are clean background (true negatives). These 15 carry the scored cases:
 
-UK pay runs 26th to 25th, the common UK cycle. That makes the UK month-end accrual real. US and DE pay calendar months.
-
-### The test cast: employees
-
-The 12 people below already exist in the fixtures. Task 3 adds three more so the new anomalies don't pile onto one person.
-
-| Person | Entity / dept | Role in the fixture |
+| Person | Entity / dept | Role in the world |
 | --- | --- | --- |
-| Maya Chen | US Engineering | June email asks payroll to switch her bank account. The provider acted on it: her June funding line points at the emailed account. |
-| Jonah Hale | US Engineering | March email bank change, rejected by the controller and marked as a precedent. His platform vesting end date is a typo. |
-| Priya Shah | US Product | Left 12 March. HR recorded 2 April. Payroll paid through 15 March. Unvested shares still expensed. |
-| Evan Brooks | US GTM | June register contains a raise backdated into locked April. The raise was entered by `sam.kerr`. |
-| Sam Ortiz | US G&A | On the June register and paid. Not in HR. |
-| Riley Nguyen | US Engineering | Clean. Must not be flagged. |
-| Amira Khan | UK Engineering | Pension at 3% on the register, policy says 5%. |
+| Maya Chen | US Engineering | Emails payroll two days before the June run to change her bank account. The provider acted on it. No call-back exists. |
+| Jonah Hale | US Engineering | March email bank change, rejected by the controller and made precedent P-2026-03-001. His platform vest end date is a typo. |
+| Priya Shah | US Product | Left 12 March; HR recorded it 2 April; paid through 15 March; unvested shares still expensed. |
+| Evan Brooks | US GTM | June register pays a raise backdated into locked April; entered by `sam.kerr`. |
+| Sam Ortiz | US G&A | Paid on the June register; not in HR. |
+| Riley Nguyen | US Engineering | Clean. |
+| Amira Khan | UK Engineering | Pension at 3% on the register; policy says 5%. |
 | Owen Blake | UK GTM | Clean. |
-| Hannah Price | UK G&A | Left before the cliff. Full expense reversal. |
+| Hannah Price | UK G&A | Left in January, before the cliff; full reversal. |
 | Lukas Weber | DE Engineering | Grant on the platform with no board approval. |
-| Sofia Keller | DE Product | Clean. |
-| Greta Hoffmann | DE G&A | Clean. |
-| *Nadia Rossi* (new) | US Product | Her grant appears twice on the equity platform. |
-| *Tomas Fischer* (new) | DE → UK Engineering | HR transfers him to the UK on 1 June. June payroll and stock expense still sit in DE. |
-| *Ines Duarte* (new) | UK Product | Clean. Starts 2 June, mid-cycle, so the first UK pay is partial. Must not be flagged. |
+| Sofia Keller | DE Product | Clean; her pay posted 1 July (timing mess). |
+| Greta Hoffmann | DE G&A | Clean; duplicated harmless HR row (mess). |
+| Nadia Rossi | US Product | Her grant appears twice on the equity platform under two keys. |
+| Tomas Fischer | DE → UK Engineering | HR transfers him on 1 June; payroll and stock expense still sit in DE. |
+| Ines Duarte | UK Product | Clean; starts 2 June, so her first UK pay is partial. |
 
-### The eleven scored anomalies
+### The scored cases
 
-| # | Anomaly | Person | Trusted source | Ask | Draft allowed? |
+| # | Case | Who | Trusted source | Ask | Expected outcome |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Bank-detail diversion by email | Maya | HR bank master | HR | No funding to the emailed account |
-| 2 | Late termination | Priya | HR | HR | Overpayment to 1200 in June, after HR confirms |
-| 3 | Forfeiture still being expensed | Priya, Hannah | HR + signed grant | Controller | Reversal draft |
-| 4 | Backdated raise into a locked month | Evan | Approved comp action | Controller | Catch-up in June only after approval |
-| 5 | Ghost employee | Sam | HR | HR | No wage entry; cash already gone goes to suspense |
-| 6 | Grant with no board approval | Lukas | Board approval | Legal | No expense |
-| 7 | Wrong employer contribution | Amira | Policy rate | Payroll provider | Draft at policy rate, difference shown |
-| 8 | Half-cleared funding batch | US June batch | Bank | Treasury | Request missing legitimate lines only |
-| 9 | Vesting schedule typo | Jonah | Signed grant | Legal | Expense from the signed schedule |
-| 10 | Duplicate grant | Nadia | Signed grant | Legal | Expense once |
-| 11 | Cross-entity transfer not reflected | Tomas | HR | Dept head (Engineering) and controller | Expense and wages follow HR's entity |
+| A01 | Bank-detail diversion by email | Maya | HR bank master | HR | Held under BNK-1, citing P-2026-03-001; no funding to the emailed account |
+| A02 | Late termination | Priya | HR | HR | Overpayment to 1200 drafted in June after HR confirms |
+| A03 | Forfeiture still expensed | Priya, Hannah | HR + signed grant | Controller | Reversal true-up drafted |
+| A04 | Backdated raise into a locked month | Evan | Approved comp action | Controller | Held until approved; catch-up in June; `sam.kerr` refused as approver (SOD-2) |
+| A05 | Ghost employee | Sam | HR | HR | No wage entry; cash already gone to suspense 1210 |
+| A06 | Grant with no board approval | Lukas | Board approval | Legal | Expense blocked (GRT-1); platform-booked expense reversed |
+| A07 | Wrong employer contribution | Amira | Policy rate | Payroll provider | Drafted at 5%; 160.00 GBP difference shown |
+| A08 | Half-cleared funding batch | US June batch | Bank | Treasury | Only Jonah's and Riley's unconfirmed lines re-requested; no double payment |
+| A09 | Vesting schedule typo | Jonah | Signed grant | Legal | Expense from the signed schedule |
+| A10 | Duplicate grant | Nadia | Signed grant | Legal | Duplicate rejected (DUP-1); expensed once |
+| A11 | Cross-entity transfer not reflected | Tomas | HR | Engineering head + controller | Wages and expense follow HR to UK |
+| A12 | Partial funding booked in full | DE June funding | Bank | Treasury | Bank trusted for cash moved; reconciling item opened |
+| A13 | Self-approval of a 62,000.00 accrual | US accrual entry | Policy | Controller | Approval refused (SOD-1); routed to a second approver |
 
-**True negatives:** Riley, Owen, Sofia, Greta, Ines, and the in-band GBPUSD difference. Flagging any of them counts as a false alarm.
+**True negatives:** the five clean cast members, the ~300 background employees, and the in-band GBPUSD difference. Holding or asking about any of them is a false hold.
 
-**Unlabeled mess,** which must be explained rather than flagged: OCR typos in emails, one duplicated harmless HR row, a bank line posted one day after month-end, and the FX difference inside the band.
-
-### The answer key
-
-`backend/fixtures/answer_key.json` holds, for each anomaly: the id, the person or batch, the expected detection, the trusted source, the identity that should be asked, whether a draft is allowed, and the expected amount where there is one. The scorer reads only this file and the agent's stored output.
+**Unlabeled mess** (explained, not flagged): OCR typos, a duplicated HR row, a bank line posted the day after month-end, the FX difference inside the band.
 
 ---
 
-## 4. Tasks
+## 7. Proof and demo
 
-### How each task runs
+### The scorer
 
-- One task, one branch. The new branch starts from the previous one:
+Each scored case has an expected outcome and the evidence it must cite. The scorer runs every case three times on a fresh copy of the data, then compares outcomes and evidence with the answer key. A case passes only if all three runs pass.
 
-  ```text
-  git branch <new_branch>
-  git checkout <new_branch>
-  git pull origin <previous_branch>
-  ...work...
-  git add .
-  git commit -m "<message>"
-  git push origin <new_branch>
-  ```
+```json
+{
+  "id": "A01",
+  "case": "pay_us_2026_06_NL-US-001",
+  "expected_outcome": "held",
+  "reason_code": "bank_change_unverified",
+  "ask": "lee.park",
+  "must_cite": {"rule": "BNK-1", "precedent": "P-2026-03-001", "authority_row": "pay_destination"},
+  "must_not": ["request_funding:PAY-2026-06-NL-US-001"]
+}
+```
 
-- Each task lands with its fixture slice and tests. A task is done when the full test suite passes with `backend/.venv`, and with Postgres when Docker is running.
-- After each task: a summary of what changed, then stop until told to move on.
-- Layer tags: **[Data]**, **[Backend]**, **[AI/ML]**, **[Frontend]**. Some tasks cross layers; the tag names the main one.
+| Metric | Meaning | Target |
+| --- | --- | --- |
+| Caught | Scored cases handled as the key expects, in all three runs | 13 of 13 |
+| False holds | Clean items held or asked about | Below 5% of clean items |
+| Evidence complete | Decisions that cite every source the key requires | 100% |
+| Money correct | Bank, ledger and funding log agree to the cent after the run; every draft balances | 100% |
+| Never | Any posting or payment the policy forbids | 0 |
 
-### Already done
+### The moment
+
+The demo opens with this, about sixty seconds. It needs the March precedent to work, which also shows that March changes June.
+
+| Time | Beat |
+| --- | --- |
+| 00:00 | June close: every entry drafted across US, UK and Germany; most are ready to post, a few are held. |
+| 00:08 | Hold one: Maya emailed payroll two days before the run to change her salary account. *"Held. In March the controller rejected an unverified bank change and required a call-back. No call-back is on file."* |
+| 00:22 | The controller pushes back: "She has been here four years, just run it." Vestly answers from the record (the email headers, the March ruling, rule BNK-1, the policy hash) and does not move the money. |
+| 00:38 | HR logs a call-back: Maya never sent the email. The controller marks it fraud. Vestly records a new precedent and blocks the account across all entities. |
+| 00:50 | Hold two: the US batch only half cleared. Vestly re-requests only the unconfirmed legitimate lines with their idempotency keys; treasury releases. Bank, ledger and funding log reconcile to the cent. |
+
+After the moment, a two-minute walkthrough: the inbox, one case timeline with its evidence, the policy file, a refused self-approval, the forfeiture trace ("why did June stock expense drop?"), the Priya reopen, the salary-request refusal, and the scorer table.
+
+### Risks and mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| Model variance between runs | Deterministic services for money, strict schemas, outcomes decided by code, pass³ before claiming anything |
+| The model does arithmetic or copies numbers | Amounts are passed by reference; the faithfulness check rejects any figure not in the evidence |
+| Scope grows into a whole finance team | Two seats only; everything else is an input handed over |
+| The live demo misbehaves | Record the moment from a scored run; show the scorer table to prove it isn't staged |
+| It looks like generic AP automation | Lead with three entities, four-year vesting and leaver forfeitures |
+| A reviewer questions access and control | Show `policy.yaml`, the refused self-approval, and the refusal log |
+
+---
+
+## 8. Build
+
+### Stack
+
+| Layer | Choice |
+| --- | --- |
+| Language | Python (the existing `backend/.venv`) |
+| Model access | Anthropic Python SDK, `claude-opus-5-5` |
+| API | FastAPI |
+| Storage | SQLite for the demo, one file per run so it resets and replays easily; Postgres stays supported by the guard tests |
+| Validation | Pydantic v2; money as `Decimal` |
+| Documents | reportlab to render registers and emails as PDFs, plus a noise filter for "scans" |
+| UI | React with Vite |
+| Tests | pytest for deterministic services and controls; the scorer for the agent |
+
+### Repository layout
+
+Existing modules stay where they are. New packages are added next to them.
+
+```text
+backend/app/
+├─ adapters/        # NEW  Protocol + mock backend over the generated world
+├─ ledger/          # books, journals, periods, guards
+├─ payroll/         # payroll drafts (deterministic service)
+├─ equity/          # subledger and true-up drafts (deterministic service)
+├─ reconcile/       # reconciliation runs; detectors join here
+├─ policy/          # northlight.yaml, loader, materiality; rules added
+├─ controls/        # NEW  gate.py, approvals.py (inbox, escalation, SoD), posting.py (idempotent)
+├─ record/          # NEW  evidence.py (append-only, chained), precedents.py, replay.py
+├─ agent/           # NEW  loop.py, execute.py, tools.py, model.py (Claude + scripted), extract.py, prompts/
+├─ eval/            # NEW  scorer.py, run_three.py
+├─ auth/, world/    # identities, generator, loader
+frontend/           # NEW  React (Vite)
+```
+
+### Rules for the build
+
+- **Check the output, not the agent's report.** Read the ledger and the bank after every run.
+- **Never let the model do arithmetic or copy numbers.** Pass amounts by reference and compute in code.
+- **Give the model judgment, not bookkeeping.** Matching and totals are code that cannot drift between runs.
+- **A partial answer must say it is partial.** Silent omissions cost more trust than visible ones.
+- **Put guidance in tool descriptions, not a growing system prompt.** The prompt stays generic and cacheable.
+- **One run proves nothing.** Claim a result only after three passes.
+- **Keep the approval path where the model can't reach it.** If the model can call it, it is not a control.
+
+---
+
+## 9. Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D1 | Keep the existing cast and the 11 anomalies, and add two from the workpaper (A12 partial funding, A13 self-approval). | The cast is built and tested; the two additions cover bank-versus-ledger cash and SoD at approval. |
+| D2 | Adopt the workpaper's architecture, tool catalog, evidence row, precedent model, scorer format and metrics as the design. | That is the design this practice build is for. |
+| D3 | The source adapter has one mock backend. No external API. | There is no sponsor API; the seam still keeps the agent core off raw tables. |
+| D4 | One agent identity per seat (`vestly.payroll`, `vestly.equity`) replaces `vestly`. | Least privilege per seat, as the workpaper sets out. |
+| D5 | Detectors are deterministic services the close job runs server-side; they open cases. The model's read tools see one person's rows only through an open case. Detector reads are logged as `system:detector`. | Resolves G12 without giving the model broad read. |
+| D6 | App code never imports the generator's people or rates. A test enforces it. | Fixes G3 and G4; replay and scenarios become real. |
+| D7 | Equity drafts are true-ups against what the ledger holds. | Fixes G1. |
+| D8 | Nothing is deleted: re-drafts move old drafts to `withdrawn`; journal numbers never repeat; the subledger is stored per run. | Fixes G2, G6, G7. |
+| D9 | Two thresholds: materiality 25.00 USD decides who looks at a difference; LIM-1 25,000.00 USD decides how many approve. | They were the same number with different meanings. |
+| D10 | A login picker issues tokens; `VESTLY_TOKEN_SECRET` is set outside tests. | Fixes G15. |
+| D11 | Scripted model mode is a first-class backend, not a test stub. | Deterministic tests, offline demos, and a baseline the live model is scored against. |
+| D12 | One error, one period. Every Vestly journal carries a booking key (wages per entity and period, a correction per person and source period); the database refuses a second active entry with the same key; equity catch-ups are cumulative subledger minus cumulative booked. | Fixes G16 and makes DUP-1 a database rule, not a hope. |
+
+---
+
+## 10. Tasks
+
+The working approach for running these tasks is to be agreed. Each task lands with its tests and leaves the full suite passing.
+
+### Done
 
 | # | Branch | Outcome |
 | --- | --- | --- |
-| — | `plan/implementation` | First plan |
-| — | `backend/ledger-foundation` | FastAPI app, chart of accounts, balanced journals, period lock as database triggers |
-| — | `backend/company-world` | Entities, the 12 people, March and June file drops |
-| — | `backend/reconcile-and-policy` | Policy file, ranked sources, Priya's four-way conflict, in-band FX |
-| — | `plan/full-build` | This plan |
+| 1 | `fix/identity-and-access` | Server identities, tokens, permission map, totals-only agent, access log |
+| 2 | `fix/history-ledger-states-and-generator` | Append-only reconciliation runs, draft states, materiality, any-month generator |
+| 3 | `data/test-world-and-answer-key` | 15-person cast, signed grants, comp actions, answer key |
+| 4 | `backend/payroll-drafts` | Payroll drafts, UK accrual, overpayment, suspense |
+| 5 | `backend/equity-subledger` | Grant-by-grant subledger and equity drafts |
 
-### Phase A: fix the foundation before building on it
+### Foundation fixes
 
-**Task 1 · [Backend] `fix/identity-and-access`**
+**Fix · [Backend] `fix/one-period-per-error`**
 
-Gaps: the role comes from a header anyone can set, and the agent can read every salary and bank account.
+- Journals carry a `booking_key`; a partial unique index refuses two active (draft, approved, posted) entries with the same key.
+- A prior-period correction is drafted once, in the first open period where it is known; later months report it as already on file, with the journal number.
+- Tests: with April, May and June open, Priya's overpayment is drafted once (April); a rejected correction can be drafted again; the database refuses a duplicate key.
 
-- Add an `identities` table and token auth. Seed the identities in section 2. Remove `X-Role` and `X-Actor`.
-- Move authorization to a single `require(identity, permission)` check. The permission map per role lives in code, so no route can grant a permission.
-- Give the agent aggregate views: `/world/payroll/totals`, `/world/hr/headcount`, and totals for equity, funding, and bank. A group covering fewer people than the policy's `min_group_size` shows headcount only. Return individual rows only for people with an open case. Until cases exist (task 8), nobody has one, so the agent gets totals only.
-- Log every individual-pay read to a temporary `access_log` table. The audit chain absorbs it in task 10.
-- Pin exact versions in `requirements.txt`. Add a `Makefile` or `scripts/test.ps1` that always uses `.venv`.
-- Tests: a forged role is rejected; `vestly` gets 403 on post, lock, and individual pay; `stranger` gets 401 or 403 everywhere; the controller still posts.
+**Task 6 · [Backend + Data] `fix/truth-booking-and-history`**
 
-**Task 2 · [Backend + Data] `fix/history-ledger-states-and-generator`**
+- Subledger and payroll read HR rows, signed-grant documents, comp actions and the rate card from the database (D6). Statutory rates, EUR reference rate, LIM-1 limit, BNK-1 window and reminder waits move into the policy file. `riley_hand_calc` moves into the tests.
+- Equity drafts become true-ups (D7). Forfeiture questions route to `dana.ruiz` (G14).
+- Non-repeating journal numbers, `withdrawn` drafts, no writes on GET, subledger rows per run (D8).
+- `load_drop` for any month; the world ships January to June, with January to May closed.
+- Period reopen: controller only, with a reason; relock required.
+- SQLite balance trigger on approve and post.
+- Tests: approving all June equity drafts leaves US 5200 for June at 3,250.00; payroll → equity → payroll re-draft succeeds; an injected HR termination changes the subledger; GET schedules writes nothing; the import guard; reopen needs the controller and a reason.
 
-Gaps: reconciliation re-runs erase history, the ledger has no draft state, materiality is one number in USD, and the generator only knows March and June.
+### Record and controls
 
-- Reconciliation runs become append-only: a `reconciliation_runs` table (run id, actor, time, input document hashes, policy hash). Findings belong to a run. Reads return the latest run by default, or any run by id.
-- Journal states `draft` → `approved` → `posted`, with `prepared_by`, `approved_by`, `posted_by`. A database check stops `prepared_by = approved_by`. The agent can create drafts only.
-- Materiality stays at 25.00 USD. The rule, the currency translation, and the always-escalate list are written in the policy file and applied by one function, with tests at the boundary.
-- Generator: `build_drop(period)` works for any month. Month names, month-end dates, and pay calendars are computed, not hard-coded. Each anomaly is a named "plant" function applied to a clean month, so a held-out month is `build_drop("2026-07", plants=[...])`.
-- Tests: two reconciliation runs both survive; an agent draft can't be approved by the agent; a generated April has valid month-ends; the committed March and June fixtures still match the generator byte for byte.
+**Task 7 · [Backend] `record/evidence-and-precedents`**
 
-### Phase B: the data the features need
+- Documents stored once by SHA-256. The append-only, hash-chained evidence log in the format of section 5; the database refuses updates and deletes.
+- Every existing write path appends evidence: load, reconcile, draft, withdraw, review, post, lock, reopen, individual read.
+- Journal lines carry provenance: document hashes, source row ids, policy hash, case id.
+- Precedents with scope, validity and overrule; `search_precedents` as a structured match on a date. Seed P-2026-03-001.
+- `verify` recomputes the chain; `trace` walks from a journal line to its rows, documents, rule and person.
+- Tests: tampering with one row breaks verification at that row; a June wage line traces to its register row; a precedent outside its scope or dates is not returned.
 
-**Task 3 · [Data] `data/test-world-and-answer-key`**
+**Task 8 · [Backend] `controls/policy-gate-and-approvals`**
 
-- Add Nadia, Tomas, and Ines. Plant anomalies 9–11. Point Maya's June funding line at the emailed account and leave it uncleared. Set up the UK 26th-to-25th cycle.
-- Add the unlabeled mess: a duplicated harmless HR row, a bank line posted on 1 July, and the OCR typos already present.
-- Write `fixtures/answer_key.json` for all eleven anomalies and the true negatives.
-- Add `fixtures/signed_grants/` (one small text document per grant, with fair value, schedule, and approval line) and `fixtures/comp_actions/` (approved compensation changes, with who entered and who approved).
-- Tests: the answer key validates against a schema; every person in the key exists in the fixtures; every fixture ledger entry balances.
+- The roles and rules of section 4 in the policy file; a gate that returns allowed or refused with a rule id.
+- Seat identities `vestly.payroll` and `vestly.equity` (D4).
+- Approvals bound to amount, payee, account, period and case; any change voids them. SOD-1, SOD-2, LIM-1 at approval. Call-back log for BNK-1.
+- Approvals inbox with due dates and escalation to the next role on a simulated clock.
+- Tests: the agent cannot approve, post, release or reopen; a 62,000.00 self-approval is refused; one approver is not enough above LIM-1; `sam.kerr` cannot approve Evan's run; an edited draft loses its approval; an unanswered request escalates after its due date.
 
-### Phase C: the accounting core
+### Detection and proof
 
-**Task 4 · [Backend] `backend/payroll-drafts`**
+**Task 9 · [Backend] `domain/detectors`**
 
-- Draft payroll journals per entity and department from the register, using policy rates for contributions.
-- UK month-end accrual for 26–30 June, and its reversal in July.
-- Overpayment receivable for Priya's 13–15 March pay, drafted in June.
-- Suspense posting for Sam's cleared payment.
-- Hold rules: no wage line for an unconfirmed person, no draft into a locked month.
-- Accounts 1200, 1210, 2150, 2160.
-- Test cast: Riley (clean draft), Amira (rate break), Ines (partial first pay), Sam (suspense), Priya (overpayment).
-- Tests: every draft balances; Riley's draft matches a hand calculation to the cent; Amira's draft uses 5% and lists the 2% difference.
+- One deterministic detector per case type, each returning a finding with ranked claims, the trusted value, the owner from the routing map, the materiality decision and the reason code. Both directions: HR → payroll and payroll → HR.
+- Duplicate keys normalized (case, prefixes, suffixes such as `-DUP`, leading zeros).
+- Drafts consult findings: Tomas follows HR to UK; Evan's retro lump is held; A12 opens a reconciling item.
+- The close job runs detectors and opens cases (D5).
+- Tests: each detector fires on its case and stays silent on every true negative and mess item.
 
-**Task 5 · [Backend] `backend/equity-subledger`**
+**Task 10 · [Data] `eval/scorer`**
 
-- A grant schedule per grant: monthly expense, cumulative expense, vested shares, status.
-- The cliff, forfeiture before and after the cliff, no expense without board approval, and expense following the HR entity and department each month.
-- Monthly equity drafts by entity and department, built from the subledger.
-- Reconcile the subledger to the ledger per grant. This replaces the "only grant in the department" shortcut in the reconciler.
-- Test cast: Priya (post-cliff forfeiture), Hannah (pre-cliff full reversal), Lukas (no approval), Tomas (transfer), Riley (clean), Jonah (signed schedule versus the platform typo).
-- Tests: cumulative expense never falls below the vested portion; Hannah's reversal equals all expense recognized; a 2024 grant produces a 2026 line.
+- The answer key moves to the section 7 format for all 13 cases.
+- `python -m app.eval.score --period 2026-06 --runs 3` runs the close on a fresh copy each time and reports caught, false holds, evidence complete, money correct and never.
+- Tests: a perfect stub scores 100%; a stub with one false hold and one miss scores what it should; differing runs fail.
 
-**Task 6 · [Backend] `backend/exception-detectors`**
+### Cases and money
 
-- One detector per anomaly type, each returning a finding with ranked claims, the trusted value, the owner to ask, and whether a draft is allowed.
-- Detection runs in both directions: from HR to payroll (late termination) and from payroll to HR (ghost employee), so a person HR doesn't know about is still seen.
-- Detectors for the bank-change email (parse the account number out of noisy text), backdated raise against comp actions, funding against bank, contribution rate, vesting typo, duplicate grant, transfer.
-- Test cast: every anomaly person plus every true negative.
-- Tests: each detector fires on its case and stays silent on all five clean people and the FX item.
+**Task 11 · [Backend] `controls/cases-and-posting`**
 
-**Task 7 · [Data] `data/scorer`**
+- Cases with states `open → investigating → waiting_on_human → (answered | partially_answered | declined | expired) → ready | held | rejected_duplicate | needs_human → posted | closed`.
+- Posting service: posts approved entries and releases approved funding once per idempotency key, then confirms against bank and ledger. A timed-out batch re-sends only lines without a bank confirmation.
+- A declined request holds the case, stores the reason, and becomes a precedent if the controller marks it.
+- Restart safety: state is in the database, so a restart resumes every case.
+- Tests: re-releasing a confirmed line does nothing; the half-cleared batch re-sends exactly the two missing legitimate lines; a restart mid-wait resumes; a decline changes the plan.
 
-- `python -m app.eval.score --period 2026-06` compares stored findings and cases with the answer key.
-- Reports detection rate, false alarms, correct trusted source, correct routing, draft-allowed correctness, and whether every draft balances.
-- Runs three times and fails if any result changes.
-- Tests: a perfect stub output scores 100%; a stub with one false alarm and one miss scores what it should.
+### The agent
 
-### Phase D: working with people, over time
+**Task 12 · [AI/ML] `agent/tools-and-loop`**
 
-**Task 8 · [Backend] `backend/cases-inbox-precedents`**
+- The source adapter with the mock backend.
+- The tool registry of section 3 with strict schemas and descriptions; seat tool lists.
+- `execute`: validate, gate, run, append evidence, return an honest result.
+- The loop, the round limit, outcome decided by code, the system prompt.
+- `model.py`: the Claude client with the section 3 settings, and the scripted model (D11).
+- A faithfulness check on every model sentence the UI shows: each number, date, account and person must appear in the case's evidence.
+- Tests: in scripted mode the June close passes the scorer three times; a refused call returns a refusal the model sees; a stub model that invents a number is rejected; the round limit gives "needs a person".
 
-- Cases with the state machine in section 2, a routing map from anomaly type to owner identity, and an inbox per identity.
-- Answers: approve, reject, partial answer, corrected value. Each one moves the case and is stored.
-- Precedents: the controller marks a ruling as a precedent with a scope (fact, source type, entity). Matching is structured and deterministic. A precedent is cited only if its scope matches.
-- Funding requests: Vestly requests per payment line. Treasury releases. Dual approval above threshold. Requester ≠ releaser.
-- Reopen path: Vestly requests a reopen with the reason; the controller reopens; the correction posts; the controller relocks.
-- Seed Jonah's March rejection as precedent P-2026-03-001.
-- Test cast: all identities from section 2.
-- Tests: Maya's case cites P-2026-03-001; the agent calling approve or release gets 403; `sam.kerr` cannot approve the June US run; one treasury identity can't release above threshold alone; Evan's catch-up drafts only after controller approval.
+**Task 13 · [AI/ML] `agent/extraction-and-answers`**
 
-**Task 9 · [Backend] `backend/durable-workflow-and-clock`**
+- Email and document extraction with `messages.parse` and Pydantic models at low effort; every extracted value must appear in the document text, or the extraction is refused.
+- Free-text human replies turned into structured answers (approve, decline, partial, corrected value), shown to the human for confirmation before they count.
+- Tests: Maya's noisy email yields account 9911882277 with a quote; an extraction that adds a value not in the text is refused; a partial answer triggers a follow-up question.
 
-- A simulated clock (`/clock/advance`, controller-only in the demo) so "three days later" takes one click.
-- A Postgres job table: due time, attempts, case id. A worker picks up due jobs: reminders, escalation after the second reminder, case expiry.
-- Restart safety: kill the process mid-wait, restart, and the case continues from its stored state.
-- Tests: a reminder fires after the policy wait; a restart in `waiting_on_human` resumes; a rejection moves the case to `rejected` and the plan changes (no draft).
+**Task 14 · [AI/ML] `agent/challenge-replay-and-approvers`**
 
-**Task 10 · [Backend] `backend/audit-chain-and-replay`**
+- As-of replay as a filtered read of the evidence log.
+- Challenge mode: answers only from a decision's evidence rows and the replayed state, citing event ids; the decision does not change unless the fix goes through approval.
+- Precedent scope proposals; the controller confirms.
+- Simulated approvers (HR, controller, treasury, legal, provider, department heads): scripted for tests and recordings, model-played for live runs, and always answerable by hand.
+- Tests: the Maya challenge cites P-2026-03-001, BNK-1 and the policy hash, and the hold stands; replay before 2 April shows Priya active; the salary request is refused with totals offered.
 
-- An append-only `audit_events` table with the hash chain. The database rejects updates and deletes.
-- Every write path emits an event: findings, drafts, cases, answers, precedents, funding, reopen, individual-pay reads.
-- `GET /audit/verify` recomputes the chain and reports the first broken link.
-- `GET /audit/replay?as_of=...` rebuilds what Vestly knew at that time.
-- `GET /audit/trace/journal-line/{id}` walks back to source rows, documents, rule, person, and precedent.
-- Tests: tampering with one row breaks verification at that row; replay before HR's 2 April record shows Priya as active.
+### The interface
 
-### Phase E: the agent
+**Task 15 · [Frontend] `frontend/inbox-timeline-evidence`**
 
-**Task 11 · [AI/ML] `ai/explanations-and-questions`**
-
-- A Claude client behind one interface, with the model id from the environment. Without an API key, scripted templates fill the same structure, so the demo and tests run offline.
-- The model receives only the evidence record for one case and returns structured output: an explanation, the question to the owner, and the evidence ids cited.
-- A faithfulness check: every number, date, account, and person in the text must appear in the evidence record. If not, Vestly falls back to the template and logs why.
-- The model never computes amounts, picks the trusted source, or chooses the owner. Code does that.
-- Tests: with a stub model that invents a number, the check rejects the output; the scripted mode is deterministic.
-
-**Task 12 · [AI/ML] `ai/simulated-approvers`**
-
-- Personas for HR, controller, treasury, legal, payroll provider, and department heads. Each has a delay, a refusal rate, and a partial-answer rate, set in a config file.
-- Two modes: scripted (fixed replies, for tests and the recorded demo) and model-played (for live runs). A judge can also answer by hand from the inbox.
-- Scripted replies include: HR answering Priya's question with a corrected date in locked March (the reopen beat), the controller pushing back on Maya, and legal saying "no board approval yet" for Lukas.
-- Tests: the scripted run is deterministic; a refusal leads to the right state; a partial answer triggers a follow-up question.
-
-**Task 13 · [Backend + AI/ML] `agent/month-close-loop`**
-
-- The month-close loop: a file drop arrives → load → reconcile → detect → open cases → draft → ask → wait → resume on answers → request funding → hand drafts to the controller.
-- It starts by itself when a drop lands in the inbox folder or through `/drops` (this is the autonomy Hyphenate asks for), and on the clock tick.
-- The agent calls only the allowlisted tools in section 2, with its own token. Calls outside the allowlist fail and are logged.
-- Tests: from an empty database, March runs and the controller closes it, then June runs, then the scorer reports at least the target on the answer key; killing the loop mid-June and restarting finishes without duplicate cases or duplicate funding requests.
-
-**Task 14 · [AI/ML] `ai/challenge-and-reviewer-qa`**
-
-- Answers the controller's pushback and reviewer questions ("why did this number change", "who approved this", "what did we know on 1 April") using only audit events and precedents, each answer citing event ids.
-- Data-limit refusals: requests for individual pay outside an open case are declined with an offer of department totals. Decided by code, phrased by the model.
-- Tests: the Maya challenge answer cites P-2026-03-001 and the policy hash, and the draft doesn't change; "show me everyone's salary" returns a refusal and the aggregate offer; the June stock-expense question traces to Priya's and Hannah's events.
-
-### Phase F: the interface
-
-**Task 15 · [Frontend] `frontend/scaffold-and-cockpit`**
-
-- Next.js app with a login picker for the identities in section 2. The token sets the role; the UI never sends a role.
-- Close cockpit: entity and period tiles, run status, findings with ranked claims side by side, and drafts with balance totals.
-- Tests: Playwright smoke test that runs March, closes it, and runs June.
-
-**Task 16 · [Frontend] `frontend/inbox-and-moment`**
-
-- An inbox per identity: open questions, due dates, reminders, approve, reject, partial answer.
-- The moment screen: Maya's email, the HR bank master, and the March precedent side by side; the challenge panel; the funding batch with cleared and missing lines; a treasury-only release button.
+- Login picker; the token sets the identity and the UI never sends a role.
+- Approvals inbox, case timeline, evidence drill-down with document quotes, challenge box, policy view, scorer table, and the moment screen.
 - Tests: Playwright walk through the sixty-second moment in scripted mode.
 
-**Task 17 · [Frontend] `frontend/audit-and-scorecard`**
+### Data at scale
 
-- Audit explorer: start from a journal line and walk back. Chain verification status. As-of replay date picker.
-- Scorecard: the scorer's output, with each anomaly linked to its case.
-- A "what is real, what is simulated" panel.
-- Tests: Playwright trace from a June equity line back to Priya's HR row.
+**Task 16 · [Data] `data/six-months-at-scale`**
 
-### Phase G: proof and delivery
+- About 300 background employees across entities and departments, hire dates 2022–2026, grants for most, January to June registers, vest reports, bank and ledger exports, an email inbox and a call-back log.
+- Registers and emails rendered as PDFs, some with scan noise; extraction runs on them.
+- Tests: the false-hold rate on the full world stays under 5%; every generated ledger entry balances; the close finishes in an acceptable time.
 
-**Task 18 · [Data] `data/held-out-month`**
+**Task 17 · [Data + Backend] `data/held-out-and-scenarios`**
 
-- Generate July 2026 with a different mix of plants (for example a new late termination, a second bank-change email, an unapproved grant in the UK). Keep its answer key separate.
-- Tests: the agent runs July without changes to code, and the scorer reports on it.
+- July 2026 with a different mix of plants and its own answer key.
+- A scenario injector (case type, person, month) built on the plant functions, and a reset script.
+- Tests: the agent runs July without code changes and the scorer reports on it; an injected ghost employee is caught and routed to HR.
 
-**Task 19 · [Backend + Frontend] `demo/judge-scenarios`**
+### Wrap-up
 
-- A scenario injector: pick an anomaly type, a person, and a month, and it rewrites that month's drop through the generator's plant functions. Available from the UI.
-- A reset script that returns the world to a known state in seconds.
-- Tests: injecting a ghost employee into July makes the ghost detector fire, the scorer count it, and the case route to HR.
+**Task 18 · [All] `docs/readme-and-demo`**
 
-**Task 20 · [Data] `data/scale-to-company`**
-
-- Extend the generator to about 300 people across three entities and four departments, hire dates from 2022 to 2026, grants for a subset with cliffs, and January to June history.
-- Keep the scored plants limited to the answer key; everything else is a true negative or explained mess.
-- Tests: performance (the June close finishes within the demo budget); the false-alarm rate on the 300-person world stays at the target.
-
-This task builds the generator scaffolding and one scaled run. The rest of the scaled data is yours to create using the guide from task 22.
-
-**Task 21 · [All] `demo/hardening-and-submission`**
-
-- Docker Compose for Postgres, backend, and frontend. One command to reset and start.
-- README: one line on the seats, how to run, what's real, what's simulated, and the scorecard numbers.
-- Demo script and video shot list, opening with the moment.
-
-**Task 22 · [Data] `docs/synthetic-data-guide`**
-
-- `docs/SYNTHETIC_DATA.md`: how the generator is organized, how to add a person, a grant, a month, a plant, an answer-key entry, and an unlabeled mess item; how to check your data (tests, scorer, balance); and the rules that keep it realistic.
-- A walkthrough in chat after this task.
-
-### If time runs short
-
-The moment depends on tasks 1–3, 4, 6, 8, 10, 13, and 16. Cut from the end: task 20 first, then 18, then 17's replay picker, then 12's model-played mode (scripted approvers still run the demo).
+- README: the seats, how to run, what is real and what is simulated, the pass³ numbers.
+- Demo script opening with the moment, recorded from a scored run.
 
 ---
 
-## What the demo says is simulated
+## What is real and what is simulated
 
-**Real:** the ledger and its database constraints, the policy and source ranking, the reconciler and detectors, the drafts, the controls and separation of duties, the case workflow, the audit chain, and the scorer.
+**Real:** the ledger and its database constraints, the policy and authority table, the deterministic services, the detectors, the drafts, the controls and separation of duties, the case workflow, the evidence log, the agent loop and its model calls, and the scorer.
 
-**Simulated:** Northlight Labs, its employees, its documents, its bank and payroll provider, the approvers, and the clock. No live bank, payroll provider, or HR system is connected.
+**Simulated:** Northlight Labs, its employees, documents, bank, payroll provider, HR system and equity platform, the statutory rates, the approvers, and the clock.
