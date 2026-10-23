@@ -130,6 +130,48 @@ SQLITE_GUARDS = [
       SELECT RAISE(ABORT, 'append_only');
     END
     """,
+    """
+    CREATE TRIGGER IF NOT EXISTS evidence_events_append_only_update
+    BEFORE UPDATE ON evidence_events
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS evidence_events_append_only_delete
+    BEFORE DELETE ON evidence_events
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS precedents_append_only_update
+    BEFORE UPDATE ON precedents
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS precedents_append_only_delete
+    BEFORE DELETE ON precedents
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS source_documents_append_only_update
+    BEFORE UPDATE ON source_documents
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS source_documents_append_only_delete
+    BEFORE DELETE ON source_documents
+    BEGIN
+      SELECT RAISE(ABORT, 'append_only');
+    END
+    """,
 ]
 
 POSTGRES_GUARDS = [
@@ -326,6 +368,33 @@ POSTGRES_GUARDS = [
     """
     CREATE TRIGGER equity_grant_months_append_only
     BEFORE UPDATE OR DELETE ON equity_grant_months
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS evidence_events_append_only ON evidence_events
+    """,
+    """
+    CREATE TRIGGER evidence_events_append_only
+    BEFORE UPDATE OR DELETE ON evidence_events
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS precedents_append_only ON precedents
+    """,
+    """
+    CREATE TRIGGER precedents_append_only
+    BEFORE UPDATE OR DELETE ON precedents
+    FOR EACH ROW
+    EXECUTE FUNCTION vestly_append_only()
+    """,
+    """
+    DROP TRIGGER IF EXISTS source_documents_append_only ON source_documents
+    """,
+    """
+    CREATE TRIGGER source_documents_append_only
+    BEFORE UPDATE OR DELETE ON source_documents
     FOR EACH ROW
     EXECUTE FUNCTION vestly_append_only()
     """,

@@ -22,7 +22,7 @@ from app.payroll.calc import accrue_wages, accrual_days, month_length, overpaid_
 from app.periods import month_of, previous_period
 from app.policy.loader import load_policy
 from app.world.loader import world_loaded
-from app.world.models import FundingInstruction, HrCensusRow, PayrollRegisterRow
+from app.world.models import FundingInstruction, HrCensusRow, PayrollRegisterRow, SourceDocument
 
 PAYROLL_PREFIX = "[Payroll]"
 ZERO = Decimal("0.00")
@@ -151,15 +151,31 @@ def _person_from_register(row: PayrollRegisterRow, policy) -> dict:
     }
 
 
-def _add(buckets: dict, account: str, department: str | None, debit: Decimal, credit: Decimal) -> None:
+def _source(session: Session, table: str, row) -> dict:
+    """A pointer from a journal line back to one source row and the document it came in."""
+    document = session.get(SourceDocument, row.document_id)
+    return {"table": table, "id": row.id, "document": document.content_hash}
+
+
+def _add(
+    buckets: dict,
+    account: str,
+    department: str | None,
+    debit: Decimal,
+    credit: Decimal,
+    sources: list[dict] | tuple = (),
+) -> None:
     key = (account, department)
-    current_debit, current_credit = buckets.get(key, (ZERO, ZERO))
-    buckets[key] = (current_debit + debit, current_credit + credit)
+    current_debit, current_credit, known = buckets.get(key, (ZERO, ZERO, []))
+    known = known + [source for source in sources if source not in known]
+    buckets[key] = (current_debit + debit, current_credit + credit, known)
 
 
 def _lines(buckets: dict) -> list[dict]:
     lines = []
-    for (account, department), (debit, credit) in sorted(buckets.items(), key=lambda item: (item[0][0], item[0][1] or "")):
+    for (account, department), (debit, credit, sources) in sorted(
+        buckets.items(), key=lambda item: (item[0][0], item[0][1] or "")
+    ):
         net_debit = quantize(debit)
         net_credit = quantize(credit)
         if net_debit > 0 and net_credit > 0:
@@ -172,9 +188,10 @@ def _lines(buckets: dict) -> list[dict]:
         lines.append(
             {
                 "account_code": account,
-                "department": department if net_debit > 0 else department,
+                "department": department,
                 "debit": money_str(net_debit),
                 "credit": money_str(net_credit),
+                "sources": sources,
             }
         )
     return lines
@@ -209,6 +226,8 @@ def _post_draft(
             }
         )
         return None
+    policy = load_policy()
+    documents = sorted({source["document"] for line in lines for source in line["sources"] if "document" in source})
     return draft_entry(
         session,
         {
@@ -216,6 +235,12 @@ def _post_draft(
             "period": period,
             "memo": f"{PAYROLL_PREFIX} {memo}",
             "booking_key": booking_key,
+            "provenance": {
+                "documents": documents,
+                "policy_version": policy.version,
+                "policy_hash": policy.content_hash,
+                "case_id": None,
+            },
             "lines": lines,
         },
         actor,
@@ -238,14 +263,15 @@ def _wage_journal(
     for row in rows:
         person = by_number[row.employee_number]
         department = row.department
-        _add(buckets, "5000", department, Decimal(person["gross_wages"]), ZERO)
-        _add(buckets, "5100", department, Decimal(person["employer_tax"]), ZERO)
-        _add(buckets, "5110", department, Decimal(person["employer_contribution"]), ZERO)
-        _add(buckets, "2100", None, ZERO, Decimal(person["net_pay"]))
-        _add(buckets, "2200", None, ZERO, Decimal(person["employee_withholdings"]))
+        ref = [_source(session, "payroll_register_rows", row)]
+        _add(buckets, "5000", department, Decimal(person["gross_wages"]), ZERO, ref)
+        _add(buckets, "5100", department, Decimal(person["employer_tax"]), ZERO, ref)
+        _add(buckets, "5110", department, Decimal(person["employer_contribution"]), ZERO, ref)
+        _add(buckets, "2100", None, ZERO, Decimal(person["net_pay"]), ref)
+        _add(buckets, "2200", None, ZERO, Decimal(person["employee_withholdings"]), ref)
         if Decimal(person["employer_tax"]) > 0:
-            _add(buckets, "2210", None, ZERO, Decimal(person["employer_tax"]))
-        _add(buckets, "2220", None, ZERO, Decimal(person["employer_contribution"]))
+            _add(buckets, "2210", None, ZERO, Decimal(person["employer_tax"]), ref)
+        _add(buckets, "2220", None, ZERO, Decimal(person["employer_contribution"]), ref)
     return _post_draft(
         session,
         entity,
@@ -267,15 +293,15 @@ def _suspense_journal(
     actor: Actor,
     on_file: list[dict],
 ) -> JournalEntry | None:
-    cash = sum(
-        (row.amount for row in funding if row.employee_number == ghost.employee_number and row.cleared),
-        ZERO,
-    )
+    paid = [row for row in funding if row.employee_number == ghost.employee_number and row.cleared]
+    cash = sum((row.amount for row in paid), ZERO)
     if cash <= 0:
         return None
+    refs = [_source(session, "payroll_register_rows", ghost)]
+    refs += [_source(session, "funding_instructions", row) for row in paid]
     buckets = {}
-    _add(buckets, "1210", ghost.department, cash, ZERO)
-    _add(buckets, "1000", None, ZERO, cash)
+    _add(buckets, "1210", ghost.department, cash, ZERO, refs)
+    _add(buckets, "1000", None, ZERO, cash, refs)
     return _post_draft(
         session,
         entity,
@@ -318,11 +344,14 @@ def _uk_accrual_journal(
         tax = quantize(wages * employer_tax)
         contrib = policy_contribution(wages, policy.contribution_rate("UK"))
         department = row.department
-        _add(buckets, "5000", department, wages, ZERO)
-        _add(buckets, "5100", department, tax, ZERO)
-        _add(buckets, "5110", department, contrib, ZERO)
-        _add(buckets, "2150", None, ZERO, wages)
-        _add(buckets, "2160", None, ZERO, tax + contrib)
+        refs = [_source(session, "payroll_register_rows", row)]
+        if hr is not None:
+            refs.append(_source(session, "hr_census_rows", hr))
+        _add(buckets, "5000", department, wages, ZERO, refs)
+        _add(buckets, "5100", department, tax, ZERO, refs)
+        _add(buckets, "5110", department, contrib, ZERO, refs)
+        _add(buckets, "2150", None, ZERO, wages, refs)
+        _add(buckets, "2160", None, ZERO, tax + contrib, refs)
     return _post_draft(
         session,
         entity,
@@ -346,7 +375,8 @@ def _uk_accrual_reversal(session: Session, period: str, actor: Actor, on_file: l
     )
     buckets: dict = {}
     for line in lines:
-        _add(buckets, line.account.code, line.department, line.credit, line.debit)
+        ref = {"table": "journal_lines", "id": line.id, "journal": accrual.number}
+        _add(buckets, line.account.code, line.department, line.credit, line.debit, [ref])
     return _post_draft(
         session,
         "UK",
@@ -390,8 +420,9 @@ def _overpayment_journals(
             if extra <= 0:
                 continue
             buckets: dict = {}
-            _add(buckets, "1200", person.department, extra, ZERO)
-            _add(buckets, "5000", person.department, ZERO, extra)
+            refs = [_source(session, "payroll_register_rows", row), _source(session, "hr_census_rows", person)]
+            _add(buckets, "1200", person.department, extra, ZERO, refs)
+            _add(buckets, "5000", person.department, ZERO, extra, refs)
             entry = _post_draft(
                 session,
                 person.entity_code,

@@ -1,14 +1,11 @@
 """Who may see one person's pay, and the record of every time someone did."""
 
-import json
-from datetime import datetime, timezone
-
 from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
-from app.auth.models import AccessLog
 from app.auth.permissions import SOURCES_AGGREGATE, SOURCES_INDIVIDUAL, allowed
 from app.ledger.errors import LedgerError
+from app.record.evidence import record
 
 
 def open_case_subjects(_session: Session) -> frozenset[str]:
@@ -37,14 +34,13 @@ def individual_scope(session: Session, who: Actor, employee_number: str | None) 
 
 
 def log_access(session: Session, who: Actor, resource: str, period: str | None, subjects: list[str]) -> None:
-    session.add(
-        AccessLog(
-            at=datetime.now(timezone.utc),
-            handle=who.handle,
-            role=who.role,
-            resource=resource,
-            period=period,
-            subjects=json.dumps(sorted(set(subjects))),
-        )
+    """Every read of one person's pay or bank details goes into the evidence log, with who read whom."""
+    record(
+        session,
+        who.handle,
+        "individual_read",
+        "source",
+        f"{resource}:{period}",
+        payload={"resource": resource, "period": period, "role": who.role, "subjects": sorted(set(subjects))},
     )
     session.commit()

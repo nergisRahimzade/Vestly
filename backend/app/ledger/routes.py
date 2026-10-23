@@ -64,6 +64,7 @@ def journal_out(entry: JournalEntry) -> JournalOut:
         total_credit=money_str(total_credit),
         lines=[
             LineOut(
+                id=line.id,
                 line_number=line.line_number,
                 account_code=line.account.code,
                 account_name=line.account.name,

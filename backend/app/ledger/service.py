@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -19,7 +20,8 @@ from app.auth.permissions import (
 from app.ledger.chart import DEPARTMENTS
 from app.ledger.errors import LedgerError
 from app.ledger.models import Account, Entity, JournalEntry, JournalLine, Period
-from app.ledger.money import parse_money
+from app.ledger.money import money_str, parse_money
+from app.record.evidence import canonical, record
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ class LineDraft:
     debit: Decimal
     credit: Decimal
     department: str | None
+    sources: tuple[dict, ...] = ()
 
 
 def parse_period(period: str) -> tuple[int, int]:
@@ -71,6 +74,8 @@ def open_period(session: Session, entity_code: str, period: str, actor: Actor) -
     year, month = parse_period(period)
     row = Period(entity=entity, year=year, month=month, status="open")
     session.add(row)
+    session.flush()
+    record(session, actor.handle, "period_opened", "period", f"{entity.code}:{period}")
     session.commit()
     return row, True
 
@@ -83,9 +88,18 @@ def lock_period(session: Session, entity_code: str, period: str, actor: Actor) -
         raise LedgerError("period_not_open", f"Open {entity.code} {period} before locking it.", 404)
     if row.status == "locked":
         return row
+    reopened = row.status == "reopened"
     row.status = "locked"
     row.locked_by = actor.handle
     row.locked_at = datetime.now(timezone.utc)
+    session.flush()
+    record(
+        session,
+        actor.handle,
+        "period_relocked" if reopened else "period_locked",
+        "period",
+        f"{entity.code}:{period}",
+    )
     session.commit()
     return row
 
@@ -109,6 +123,8 @@ def reopen_period(session: Session, entity_code: str, period: str, actor: Actor,
     row.reopened_by = actor.handle
     row.reopened_at = datetime.now(timezone.utc)
     row.reopen_reason = reason
+    session.flush()
+    record(session, actor.handle, "period_reopened", "period", f"{entity.code}:{period}", payload={"reason": reason})
     session.commit()
     return row
 
@@ -134,7 +150,8 @@ def _line_drafts(session: Session, lines: list[dict]) -> list[LineDraft]:
         if department is not None and department not in DEPARTMENTS:
             names = ", ".join(DEPARTMENTS)
             raise LedgerError("unknown_department", f"Department must be one of {names}.", 422)
-        drafts.append(LineDraft(account=account, debit=debit, credit=credit, department=department))
+        sources = tuple(line.get("sources") or ())
+        drafts.append(LineDraft(account=account, debit=debit, credit=credit, department=department, sources=sources))
     return drafts
 
 
@@ -163,6 +180,15 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
     if "booking_key" in message:
         return LedgerError("already_booked", "A live entry already books this item.", 409)
     return LedgerError("ledger_rejected", "The database rejected the journal entry.", 422)
+
+
+def _flush(session: Session, entity_code: str, period: str) -> None:
+    """Send the change to the database now, so its checks run before the evidence row is written."""
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _translate_integrity(exc, entity_code, period) from exc
 
 
 def _commit(session: Session, entity_code: str, period: str) -> None:
@@ -219,6 +245,7 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
         currency=entity.currency,
         prepared_by=prepared_by,
         prepared_at=datetime.now(timezone.utc),
+        provenance_json=canonical(payload["provenance"]) if payload.get("provenance") else None,
         lines=[
             JournalLine(
                 account=draft.account,
@@ -226,6 +253,7 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
                 debit=draft.debit,
                 credit=draft.credit,
                 department=draft.department,
+                sources_json=canonical(list(draft.sources)) if draft.sources else None,
             )
             for index, draft in enumerate(drafts, start=1)
         ],
@@ -250,8 +278,35 @@ def draft_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:
     require(actor, JOURNAL_DRAFT, "draft a journal entry")
     entry, entity, period = _build_entry(session, payload, actor.handle)
     session.add(entry)
+    _flush(session, entity.code, period)
+    _record_entry(session, actor.handle, "journal_drafted", entry, period)
     _commit(session, entity.code, period)
     return entry
+
+
+def _record_entry(session: Session, actor: str, action: str, entry: JournalEntry, period: str, **extra) -> None:
+    total = sum((line.debit for line in entry.lines), Decimal("0.00"))
+    provenance = json.loads(entry.provenance_json) if entry.provenance_json else {}
+    record(
+        session,
+        actor,
+        action,
+        "journal_entry",
+        entry.id,
+        case_id=provenance.get("case_id"),
+        payload={
+            "number": entry.number,
+            "entity": entry.entity.code,
+            "period": period,
+            "memo": entry.memo,
+            "booking_key": entry.booking_key,
+            "status": entry.status,
+            "total": money_str(total),
+            "provenance": provenance,
+            **extra,
+        },
+        basis=[{"type": "document", "doc_sha256": digest} for digest in provenance.get("documents", [])],
+    )
 
 
 def withdraw_draft(session: Session, entry: JournalEntry, actor: Actor, reason: str) -> JournalEntry:
@@ -264,7 +319,9 @@ def withdraw_draft(session: Session, entry: JournalEntry, actor: Actor, reason: 
     entry.status = "withdrawn"
     entry.withdrawn_at = datetime.now(timezone.utc)
     entry.withdraw_reason = reason
-    session.flush()
+    period = period_label(entry.period)
+    _flush(session, entry.entity.code, period)
+    _record_entry(session, actor.handle, "journal_withdrawn", entry, period, reason=reason)
     return entry
 
 
@@ -291,6 +348,9 @@ def review_entry(session: Session, entry_id: str, actor: Actor, approve: bool, n
     entry.reviewed_by = actor.handle
     entry.reviewed_at = datetime.now(timezone.utc)
     entry.review_note = (note or "").strip() or None
+    _flush(session, entry.entity.code, period)
+    action = "journal_approved" if approve else "journal_rejected"
+    _record_entry(session, actor.handle, action, entry, period, note=entry.review_note)
     _commit(session, entry.entity.code, period)
     return entry
 
@@ -305,6 +365,8 @@ def post_approved(session: Session, entry_id: str, actor: Actor) -> JournalEntry
     entry.status = "posted"
     entry.posted_by = actor.handle
     entry.posted_at = datetime.now(timezone.utc)
+    _flush(session, entry.entity.code, period)
+    _record_entry(session, actor.handle, "journal_posted", entry, period)
     _commit(session, entry.entity.code, period)
     return entry
 
@@ -320,6 +382,8 @@ def import_posted_entry(session: Session, payload: dict, actor: Actor, source: s
     entry.posted_by = actor.handle
     entry.posted_at = now
     session.add(entry)
+    _flush(session, entity.code, period)
+    _record_entry(session, actor.handle, "journal_imported", entry, period, source=source)
     _commit(session, entity.code, period)
     return entry
 

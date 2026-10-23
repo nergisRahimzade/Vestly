@@ -21,6 +21,7 @@ class ReviewIn(BaseModel):
 
 
 class LineOut(BaseModel):
+    id: str
     line_number: int
     account_code: str
     account_name: str

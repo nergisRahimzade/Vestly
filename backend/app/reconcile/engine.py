@@ -13,6 +13,7 @@ from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.ledger.service import parse_period
 from app.policy.loader import Policy, load_policy
+from app.record.evidence import record
 from app.reconcile.models import Reconciliation, ReconciliationRun
 from app.world.loader import rate_card_for, world_loaded
 from app.world.models import (
@@ -39,6 +40,22 @@ def reconcile_period(session: Session, period: str, actor: Actor) -> tuple[Recon
     for finding in findings:
         finding.run_id = run.id
     session.add_all(findings)
+    record(
+        session,
+        actor.handle,
+        "reconciliation_run",
+        "reconciliation_run",
+        run.id,
+        payload={
+            "period": period,
+            "sequence": run.sequence,
+            "inputs_hash": run.inputs_hash,
+            "findings": [
+                {"fact": row.fact, "subject": row.subject_number, "disposition": row.disposition, "trusted": row.trusted_value}
+                for row in findings
+            ],
+        },
+    )
     session.commit()
     return run, findings
 

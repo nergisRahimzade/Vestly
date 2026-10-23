@@ -115,6 +115,8 @@ class JournalEntry(Base):
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     withdraw_reason: Mapped[str | None] = mapped_column(String(500))
+    # JSON: the documents (by hash), policy, schedule run and case behind the whole entry
+    provenance_json: Mapped[str | None] = mapped_column(String)
 
     entity: Mapped[Entity] = relationship()
     period: Mapped[Period] = relationship()
@@ -141,6 +143,8 @@ class JournalLine(Base):
     debit: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     credit: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     department: Mapped[str | None] = mapped_column(String(32))
+    # JSON list: the source rows this line was built from, each with its table, id and document hash
+    sources_json: Mapped[str | None] = mapped_column(String)
 
     entry: Mapped[JournalEntry] = relationship(back_populates="lines")
     account: Mapped[Account] = relationship()

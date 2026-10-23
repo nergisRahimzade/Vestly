@@ -4,10 +4,11 @@ import pytest
 from sqlalchemy import select
 
 from app.auth.identities import IDENTITIES
-from app.auth.models import AccessLog, Identity
+from app.auth.models import Identity
 from app.auth.permissions import JOURNAL_POST, PERIOD_LOCK, PERIOD_OPEN, ROLE_PERMISSIONS, WORLD_LOAD
 from app.auth.tokens import token_for
 from app.db import SessionLocal
+from app.record.models import EvidenceEvent
 from helpers import AGENT, AUDITOR, CONTROLLER, PROVIDER, STRANGER
 
 WAGES = {
@@ -22,9 +23,13 @@ WAGES = {
 INDIVIDUAL_READS = ("hr", "payroll", "funding", "equity", "bank")
 
 
-def _access_rows() -> list[AccessLog]:
+def _access_rows() -> list[dict]:
+    """Individual reads, as the evidence log keeps them."""
     with SessionLocal() as session:
-        return list(session.scalars(select(AccessLog).order_by(AccessLog.at)))
+        rows = session.scalars(
+            select(EvidenceEvent).where(EvidenceEvent.action == "individual_read").order_by(EvidenceEvent.seq)
+        )
+        return [{"handle": row.actor, **json.loads(row.payload_json)} for row in rows]
 
 
 def test_a_role_header_grants_nothing(client):
@@ -128,6 +133,6 @@ def test_every_individual_read_is_logged(client):
     client.get("/world/hr?period=2026-06&employee_number=NL-US-005", headers=AUDITOR)
     rows = _access_rows()
     assert len(rows) == before + 1
-    assert rows[-1].handle == "riley.auditor"
-    assert rows[-1].resource == "hr"
-    assert json.loads(rows[-1].subjects) == ["NL-US-005"]
+    assert rows[-1]["handle"] == "riley.auditor"
+    assert rows[-1]["resource"] == "hr"
+    assert rows[-1]["subjects"] == ["NL-US-005"]

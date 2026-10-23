@@ -66,7 +66,22 @@ class Policy:
         raise KeyError(entity_code)
 
 
+_CACHE: dict[Path, tuple[tuple[int, int], Policy]] = {}
+
+
 def load_policy(path: Path = POLICY_PATH) -> Policy:
+    """The policy as the file says now. Parsed again whenever the file changes, so the hash is always current."""
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _CACHE.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    policy = _parse_policy(path)
+    _CACHE[path] = (stamp, policy)
+    return policy
+
+
+def _parse_policy(path: Path) -> Policy:
     raw_text = path.read_text(encoding="utf-8")
     document = yaml.safe_load(raw_text)
     facts = tuple(

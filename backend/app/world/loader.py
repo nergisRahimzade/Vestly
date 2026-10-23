@@ -12,6 +12,8 @@ from app.auth.permissions import WORLD_LOAD, require
 from app.ledger.chart import ENTITIES as ENTITY_ROWS
 from app.ledger.errors import LedgerError
 from app.ledger.service import import_posted_entry, lock_period, open_period, parse_period
+from app.record.evidence import document_basis, record
+from app.record.precedents import seed_march_ruling
 from app.world.drops import MONTHS, fixture_dir
 from app.world.evidence import load_static_evidence
 from app.world.models import (
@@ -37,10 +39,21 @@ def load_world(session: Session, actor: Actor) -> dict:
     """Load the months the test world ships with, oldest first. The actor must be allowed to post and lock."""
     if session.get(WorldLoad, WORLD_VERSION) is not None:
         return {"status": "already_loaded", "people": _people_count(session)}
-    load_static_evidence(session)
+    static = load_static_evidence(session)
+    session.flush()
+    record(
+        session,
+        actor.handle,
+        "documents_received",
+        "documents",
+        "static",
+        payload={"count": len(static)},
+        basis=[document_basis(row.content_hash, row.title) for row in static],
+    )
     session.commit()
     for period in sorted(MONTHS):
         load_drop(session, read_drop_file(period), actor)
+    seed_march_ruling(session, actor)
     session.add(WorldLoad(version=WORLD_VERSION, loaded_at=datetime.now(timezone.utc)))
     session.commit()
     return {"status": "loaded", "people": _people_count(session)}
@@ -67,7 +80,16 @@ def load_drop(session: Session, drop: dict, actor: Actor) -> dict:
         if existing.content_hash == digest:
             return {"status": "already_loaded", "period": period}
         raise LedgerError("drop_conflict", f"A different {period} drop is already loaded.", 409)
-    store_drop(session, drop)
+    documents = store_drop(session, drop)
+    record(
+        session,
+        actor.handle,
+        "drop_received",
+        "drop",
+        period,
+        payload={"content_hash": digest, "closed": bool(drop["close_period"]), "received_on": drop["received_on"]},
+        basis=[document_basis(row.content_hash, row.title) for row in documents],
+    )
     session.add(
         DropLoad(
             period=period,
@@ -119,7 +141,7 @@ def _document(system: str, period: str, title: str, body: str, received_on: str)
     )
 
 
-def store_drop(session: Session, drop: dict) -> None:
+def store_drop(session: Session, drop: dict) -> list[SourceDocument]:
     """Store one month's file drop as source rows. It does not post anything."""
     period = drop["period"]
     received_on = drop["received_on"]
@@ -172,6 +194,7 @@ def store_drop(session: Session, drop: dict) -> None:
             )
             for line in entry["lines"]
         )
+    return list(documents.values())
 
 
 def _refresh_people(session: Session) -> None:

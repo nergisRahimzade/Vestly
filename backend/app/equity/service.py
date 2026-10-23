@@ -34,6 +34,8 @@ from app.ledger.service import (
     withdraw_draft,
 )
 from app.periods import add_months, month_of
+from app.policy.loader import load_policy
+from app.record.evidence import record
 from app.world.loader import first_loaded_period, world_loaded
 from app.world.models import DropLoad, EquitySnapshot, HrCensusRow, SourceDocument
 
@@ -146,6 +148,14 @@ def rebuild_schedules(session: Session, through_period: str, actor: Actor) -> tu
     session.add(run)
     session.flush()
     session.add_all(_row(run.id, row) for row in rows)
+    record(
+        session,
+        actor.handle,
+        "schedule_run",
+        "equity_schedule_run",
+        run.id,
+        payload={"through_period": through_period, "sequence": run.sequence, "inputs_hash": run.inputs_hash, "rows": len(rows)},
+    )
     session.commit()
     return run, rows
 
@@ -216,10 +226,34 @@ def draft_equity(session: Session, period: str, actor: Actor) -> dict:
             422,
         )
 
+    grant_documents = {grant.grant_number: grant.content_hash for grant in signed_grants(session)}
     earned: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    sources: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in window:
         earned[(row.entity_code, row.department)] += row.booked_net_expense
-    booked = _booked_stock_expense(session, window_start, period)
+    for stored in session.scalars(
+        select(EquityGrantMonth)
+        .where(EquityGrantMonth.run_id == run.id, EquityGrantMonth.period >= window_start, EquityGrantMonth.period <= period)
+        .order_by(EquityGrantMonth.grant_number, EquityGrantMonth.period)
+    ):
+        sources[(stored.entity_code, stored.department)].append(
+            {
+                "table": "equity_grant_months",
+                "id": stored.id,
+                "grant": stored.grant_number,
+                "period": stored.period,
+                "document": grant_documents[stored.grant_number],
+            }
+        )
+    booked, booked_lines = _booked_stock_expense(session, window_start, period)
+    for key, refs in booked_lines.items():
+        sources[key].extend(refs)
+    provenance = {
+        "documents": sorted(set(grant_documents.values())),
+        "schedule_run": run.id,
+        "window_start": window_start,
+        "case_id": None,
+    }
     on_file: list[dict] = []
     journals: list[JournalEntry] = []
     for entity in ENTITIES:
@@ -228,7 +262,8 @@ def draft_equity(session: Session, period: str, actor: Actor) -> dict:
             for (code, department) in set(earned) | set(booked)
             if code == entity
         }
-        entry = _trueup_journal(session, period, entity, differences, actor, on_file)
+        line_sources = {department: sources.get((entity, department), []) for department in differences}
+        entry = _trueup_journal(session, period, entity, differences, line_sources, provenance, actor, on_file)
         if entry is not None:
             journals.append(entry)
 
@@ -266,8 +301,11 @@ def _month_after_last_trueup(session: Session, period: str) -> str | None:
     return add_months(f"{max(earlier)}-01", 1)[:7]
 
 
-def _booked_stock_expense(session: Session, start: str, end: str) -> dict[tuple[str, str], Decimal]:
-    """Account 5200, net debit, per entity and department, in every live entry from start through end."""
+def _booked_stock_expense(
+    session: Session, start: str, end: str
+) -> tuple[dict[tuple[str, str], Decimal], dict[tuple[str, str], list[dict]]]:
+    """Account 5200, net debit, per entity and department, in every live entry from start through end,
+    with the ledger lines that make it up."""
     rows = session.execute(
         select(JournalEntry, JournalLine, Period)
         .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
@@ -277,11 +315,14 @@ def _booked_stock_expense(session: Session, start: str, end: str) -> dict[tuple[
         .options(selectinload(JournalEntry.entity))
     )
     totals: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    lines: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for entry, line, period_row in rows:
         label = period_label(period_row)
         if start <= label <= end:
-            totals[(entry.entity.code, line.department or "")] += line.debit - line.credit
-    return totals
+            key = (entry.entity.code, line.department or "")
+            totals[key] += line.debit - line.credit
+            lines[key].append({"table": "journal_lines", "id": line.id, "journal": entry.number})
+    return totals, lines
 
 
 def _grant_breakdown(
@@ -470,6 +511,8 @@ def _trueup_journal(
     period: str,
     entity: str,
     differences: dict[str, Decimal],
+    line_sources: dict[str, list[dict]],
+    provenance: dict,
     actor: Actor,
     on_file: list[dict],
 ) -> JournalEntry | None:
@@ -477,9 +520,14 @@ def _trueup_journal(
     for department, net in differences.items():
         _add_net(buckets, department, net)
     lines = _lines(buckets)
+    every_source = [source for department in differences for source in line_sources[department]]
+    for line in lines:
+        department = line["department"]
+        line["sources"] = line_sources.get(department, []) if department is not None else every_source
     if len(lines) < 2:
         return None
     booking_key = f"equity:trueup:{entity}:{period}"
+    policy = load_policy()
     live = live_entry_for_key(session, booking_key)
     if live is not None:
         on_file.append(
@@ -498,6 +546,11 @@ def _trueup_journal(
             "period": period,
             "memo": f"{EQUITY_PREFIX} {entity} stock compensation true-up through {month_of(period).label}",
             "booking_key": booking_key,
+            "provenance": {
+                **provenance,
+                "policy_version": policy.version,
+                "policy_hash": policy.content_hash,
+            },
             "lines": lines,
         },
         actor,

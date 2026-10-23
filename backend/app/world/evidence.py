@@ -8,11 +8,17 @@ from app.world.drops import actions_dir, grants_dir
 from app.world.models import SourceDocument
 
 
-def load_static_evidence(session: Session) -> None:
-    for path in sorted(grants_dir().glob("*.txt")):
-        session.add(_document("signed_grant", path.stem, path.read_text(encoding="utf-8")))
-    for path in sorted(actions_dir().glob("*.json")):
-        session.add(_document("comp_action", f"Compensation actions {path.stem}", path.read_text(encoding="utf-8")))
+def load_static_evidence(session: Session) -> list[SourceDocument]:
+    rows = [
+        _document("signed_grant", path.stem, path.read_text(encoding="utf-8"))
+        for path in sorted(grants_dir().glob("*.txt"))
+    ]
+    rows += [
+        _document("comp_action", f"Compensation actions {path.stem}", path.read_text(encoding="utf-8"))
+        for path in sorted(actions_dir().glob("*.json"))
+    ]
+    session.add_all(rows)
+    return rows
 
 
 def _document(system: str, title: str, body: str) -> SourceDocument:
