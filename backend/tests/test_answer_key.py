@@ -6,7 +6,10 @@ from app.auth.identities import IDENTITIES
 from app.world.drops import PEOPLE, SAM_ORTIZ, actions_dir, build_drop, fixture_dir, grants_dir
 
 ANSWER_KEY = Path(__file__).resolve().parents[1] / "fixtures" / "answer_key.json"
-REQUIRED = {"id", "name", "period", "subjects", "trusted_source", "ask", "draft_allowed"}
+REQUIRED = {
+    "id", "name", "kind", "period", "subjects", "trusted_source", "ask", "draft_allowed",
+    "expected_outcome", "reason_code", "must_cite", "must_not", "related",
+}
 HANDLES = {handle for handle, _name, _role, _dept in IDENTITIES}
 
 
@@ -45,6 +48,31 @@ def test_answer_key_schema_and_roster():
         assert name in names or name == "GBPUSD"
     people_in_key = {subject for row in key["anomalies"] for subject in row["subjects"] if not subject.startswith("PAY-")}
     assert people_in_key <= roster
+
+
+def test_every_case_says_how_it_is_scored():
+    """The scoring fields name real outcomes, rules, precedents and authority rows, and well-formed actions."""
+    from app.policy.loader import load_policy
+
+    key = _key()
+    policy = load_policy()
+    rules = {name for name, _text in policy.rules}
+    facts = {fact.fact for fact in policy.facts}
+    for row in key["anomalies"]:
+        assert row["expected_outcome"] in key["outcomes"], row["id"]
+        assert row["reason_code"], row["id"]
+        cite = row["must_cite"]
+        assert set(cite) <= {"rules", "precedents", "authority_row"}
+        assert set(cite.get("rules", [])) <= rules, row["id"]
+        assert all(item.startswith("P-") for item in cite.get("precedents", []))
+        assert cite.get("authority_row") is None or cite["authority_row"] in facts, row["id"]
+        for action in row["must_not"]:
+            verb = action.split(":", 1)[0]
+            assert verb in {"request_funding", "reopen", "request_reopen", "approve_by_agent"}, action
+        for subject in row["related"]:
+            assert subject.startswith("PAY-2026-06-") and subject not in row["subjects"]
+    held = {row["id"] for row in key["anomalies"] if row["expected_outcome"] == "held"}
+    assert {row["id"] for row in key["anomalies"] if row["draft_allowed"] is False} <= held
 
 
 def test_fixture_ledgers_balance_and_match_the_key_cast():

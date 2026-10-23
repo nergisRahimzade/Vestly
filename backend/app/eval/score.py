@@ -1,0 +1,73 @@
+"""Score the close against the answer key.
+
+    python -m app.eval.score --period 2026-06 --runs 3 [--json report.json]
+
+Every run starts from a fresh copy of the company. A case counts as caught only if all
+runs handle it as the key expects, the same way each time. Exits 1 if any target is missed.
+"""
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+os.environ.setdefault("VESTLY_SKIP_WORLD", "1")
+
+from app.eval.runner import run_close  # noqa: E402
+from app.eval.scorer import TARGETS, load_key, run_as_dict, score  # noqa: E402
+
+
+def score_period(period: str, runs: int = 3, key: dict | None = None) -> tuple[dict, list]:
+    results = [run_close(period) for _ in range(runs)]
+    return score(key or load_key(), results), results
+
+
+def render(report: dict) -> str:
+    metrics = report["metrics"]
+    mark = {True: "met", False: "MISSED"}
+    lines = [
+        f"Vestly close {report['period']}, {report['runs']} run(s) on a fresh copy each",
+        "",
+        f"  Caught             {metrics['caught']['value']}/{metrics['caught']['of']}"
+        f"            target {metrics['caught']['of']}/{metrics['caught']['of']}   {mark[metrics['caught']['met']]}",
+        f"  False holds        {metrics['false_holds']['value']}/{metrics['false_holds']['of']} clean items"
+        f"   target < {TARGETS['false_holds']:.0%}      {mark[metrics['false_holds']['met']]}",
+        f"  Evidence complete  {metrics['evidence_complete']['rate']:.0%}"
+        f"             target 100%      {mark[metrics['evidence_complete']['met']]}",
+        f"  Money correct      {metrics['money_correct']['rate']:.0%}"
+        f"             target 100%      {mark[metrics['money_correct']['met']]}",
+        f"  Never              {metrics['never']['value']}"
+        f"                target 0         {mark[metrics['never']['met']]}",
+        "",
+    ]
+    for case in report["cases"]:
+        lines.append(f"  {case['id']} {'caught' if case['caught'] else 'MISSED'}  {case['name']}")
+        lines.extend(f"      {problem}" for problem in case["problems"])
+    if metrics["false_holds"]["subjects"]:
+        lines.append(f"  False holds on: {', '.join(metrics['false_holds']['subjects'])}")
+    lines.extend(f"  Money: {problem}" for problem in metrics["money_correct"]["problems"])
+    lines.extend(f"  Forbidden: {action}" for action in metrics["never"]["actions"])
+    lines.append("")
+    lines.append("PASSED" if report["passed"] else "FAILED")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Score Vestly's close against the answer key.")
+    parser.add_argument("--period", default="2026-06")
+    parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--json", type=Path, help="Also write the full report and run results here.")
+    args = parser.parse_args(argv)
+    if args.runs < 1:
+        parser.error("--runs must be at least 1")
+    report, results = score_period(args.period, args.runs)
+    print(render(report))
+    if args.json:
+        payload = {"report": report, "runs": [run_as_dict(run) for run in results]}
+        args.json.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return 0 if report["passed"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

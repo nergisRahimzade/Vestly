@@ -62,22 +62,32 @@ def enforce(verdict: Verdict, actor: Actor, action: str) -> None:
     raise LedgerError(code, verdict.reason, status, rule=verdict.rule, actor=actor.handle, action=action)
 
 
-def log_refusal(exc: LedgerError) -> None:
-    """Write a refusal to the evidence log in its own transaction; the refused write was rolled back."""
+def log_refusal(exc: LedgerError, session: Session | None = None) -> None:
+    """Write a refusal to the evidence log in its own transaction; the refused write was rolled back.
+
+    Callers that work outside the API (the scorer's runs) pass their own session.
+    """
     from app.db import SessionLocal
 
+    def write(target: Session) -> None:
+        target.rollback()
+        record(
+            target,
+            exc.actor or "unknown",
+            "refused",
+            "action",
+            exc.action or exc.code,
+            reason_code=exc.rule,
+            payload={"code": exc.code, "message": exc.message},
+        )
+        target.commit()
+
     try:
-        with SessionLocal() as session:
-            record(
-                session,
-                exc.actor or "unknown",
-                "refused",
-                "action",
-                exc.action or exc.code,
-                reason_code=exc.rule,
-                payload={"code": exc.code, "message": exc.message},
-            )
-            session.commit()
+        if session is not None:
+            write(session)
+            return
+        with SessionLocal() as own:
+            write(own)
     except Exception:  # the refusal itself must still reach the caller
         pass
 

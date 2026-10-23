@@ -217,8 +217,9 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | This file | `docs/claude-md` |
 | Task 8: policy gate, approvals inbox, clock, call-backs | `controls/policy-gate-and-approvals` |
 | Task 9: detectors for every case, explained mess, payroll holds, A12 planted | `domain/detectors` |
+| Task 10: scorer (`python -m app.eval.score --period 2026-06 --runs 3`), answer key in scoring format | `eval/scorer` |
 
-**Next: task 10 `eval/scorer`** (pull from `domain/detectors`), then 11 cases and posting, 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 11 `controls/cases-and-posting`** (pull from `eval/scorer`), then 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 

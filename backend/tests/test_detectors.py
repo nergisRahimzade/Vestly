@@ -28,7 +28,7 @@ def _conflicts(findings: list[dict]) -> list[dict]:
     return [row for row in findings if row["disposition"] == "conflict"]
 
 
-@pytest.mark.parametrize("anomaly", [row for row in KEY["anomalies"] if row["kind"] != "control"], ids=lambda row: row["id"])
+@pytest.mark.parametrize("anomaly", [row for row in KEY["anomalies"] if row["subjects"]], ids=lambda row: row["id"])
 def test_each_planted_case_is_found_as_the_key_expects(june, anomaly):
     for subject in anomaly["subjects"]:
         matches = [row for row in _conflicts(june) if row["kind"] == anomaly["kind"] and row["subject_number"] == subject]

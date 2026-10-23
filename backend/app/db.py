@@ -22,19 +22,20 @@ def build_engine(url: str):
             kwargs["poolclass"] = StaticPool
     elif url.startswith("postgresql"):
         kwargs["connect_args"] = {"connect_timeout": 3}
-    return create_engine(url, **kwargs)
+    engine = create_engine(url, **kwargs)
+    if engine.dialect.name == "sqlite":
+        event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+    return engine
+
+
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 ENGINE = build_engine(database_url())
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
-
-
-@event.listens_for(ENGINE, "connect")
-def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
-    if ENGINE.dialect.name == "sqlite":
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
 
 
 def get_db() -> Generator[Session, None, None]:
