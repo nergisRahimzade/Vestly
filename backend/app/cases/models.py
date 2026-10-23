@@ -91,6 +91,24 @@ class CaseAnswer(Base):
     evidence_id: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
+class ReplyDraft(Base):
+    """A person's free-text reply, as Vestly read it. It counts only after the same person confirms the reading."""
+
+    __tablename__ = "reply_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    question_id: Mapped[str] = mapped_column(ForeignKey("case_questions.id"), nullable=False)
+    replied_by: Mapped[str] = mapped_column(String(48), nullable=False)
+    reply: Mapped[str] = mapped_column(String, nullable=False)
+    # what the reader made of it: answer, corrected_value, note, quote
+    interpretation_json: Mapped[str | None] = mapped_column(String)
+    problems_json: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    # proposed (waiting for the person to confirm), confirmed, rejected (they said the reading is wrong),
+    # unreadable (the reading did not hold up against their words)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class CaseLink(Base):
     """A record that belongs to a case: a journal it drafted, a funding request it made. Append-only."""
 

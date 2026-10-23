@@ -360,12 +360,40 @@ class DocumentInput(ToolInput):
     DocumentInput,
 )
 def get_document(ctx, args: DocumentInput) -> ToolResult:
+    document = _cited_document(ctx, args.content_hash)
+    return ToolResult.ok({"title": document.title, "system": document.system, "received_on": document.received_on, "body": document.body, "content_hash": document.content_hash})
+
+
+def _cited_document(ctx, content_hash: str) -> SourceDocument:
     finding = ctx.session.get(Reconciliation, ctx.case.finding_id)
     cited = {item.get("doc_sha256") for item in json.loads(finding.basis_json) if item.get("type") == "document"}
-    if args.content_hash not in cited:
+    if content_hash not in cited:
         enforce(deny("PRV-1", f"Case {ctx.case.key} does not cite that document."), ctx.seat, "read_scoped")
-    document = ctx.session.scalar(select(SourceDocument).where(SourceDocument.content_hash == args.content_hash))
-    return ToolResult.ok({"title": document.title, "system": document.system, "received_on": document.received_on, "body": document.body, "content_hash": document.content_hash})
+    return ctx.session.scalar(select(SourceDocument).where(SourceDocument.content_hash == content_hash))
+
+
+@register(
+    "extract_document", "read", ("payroll", "equity"), "read_scoped",
+    """Read a document this case cites (an email, a note) into fields, each with its value and the line it came
+    from. Code checks every value against the document text and refuses the extraction if any value is not
+    there. Use it to read noisy text; an email is still never a source for bank details.""",
+    DocumentInput,
+)
+def extract_document(ctx, args: DocumentInput) -> ToolResult:
+    from app.agent.extract import ExtractionRefused, extraction_problems, reader
+
+    document = _cited_document(ctx, args.content_hash)
+    try:
+        extraction = reader().extract(document.title, document.body)
+    except ExtractionRefused as exc:
+        return ToolResult.failed(f"extraction_declined: {exc}")
+    problems = extraction_problems(document.body, extraction)
+    if problems:
+        return ToolResult.refused(None, "Extraction refused; it states what the document does not: " + " ".join(problems))
+    return ToolResult.ok(
+        {"title": document.title, "content_hash": document.content_hash, **extraction.model_dump()},
+        establishes=[(document.content_hash, "found")],
+    )
 
 
 class PrecedentInput(ToolInput):

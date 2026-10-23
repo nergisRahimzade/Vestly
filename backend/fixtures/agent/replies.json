@@ -1,0 +1,13 @@
+{
+  "note": "Synthetic free-text replies from Northlight people to Vestly's questions, with how each should be read. The scripted reader must read each one this way; a live model is held to the same checks.",
+  "replies": [
+    {"from": "lee.park", "text": "Yes, that is right. She left on 12 March.", "answer": "confirmed"},
+    {"from": "lee.park", "text": "Confirmed, HR updated the record on 2 April.", "answer": "confirmed"},
+    {"from": "lee.park", "text": "No, she never sent that email. Please block the account.", "answer": "declined"},
+    {"from": "morgan.li", "text": "That grant was not approved by the board.", "answer": "declined"},
+    {"from": "lee.park", "text": "Exit date is right, but I have not found the payroll notice yet.", "answer": "partial"},
+    {"from": "payroll.provider", "text": "We fixed the rate for July only, June is still pending.", "answer": "partial"},
+    {"from": "lee.park", "text": "The termination date should be 2026-03-12, not the 15th.", "answer": "corrected", "corrected_value": "2026-03-12"},
+    {"from": "alex.moreau", "text": "Actually 9600.00 left on 1 July by cheque.", "answer": "corrected", "corrected_value": "9600.00"}
+  ]
+}

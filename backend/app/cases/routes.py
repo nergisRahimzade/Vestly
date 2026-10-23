@@ -32,6 +32,14 @@ class AnswerIn(BaseModel):
     precedent: PrecedentIn | None = None
 
 
+class ReplyIn(BaseModel):
+    text: str = Field(max_length=2000)
+
+
+class ConfirmIn(BaseModel):
+    accept: bool
+
+
 class FundingIn(BaseModel):
     period: str
     payment_ids: list[str]
@@ -84,6 +92,22 @@ def my_questions(db: Session = Depends(get_db), who: Actor = Depends(current_act
 def answer_question(question_id: str, body: AnswerIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
     precedent = body.precedent.model_dump() if body.precedent else None
     case = service.answer(db, question_id, who, body.answer, body.note, precedent)
+    return service.timeline(db, case)
+
+
+@router.post("/questions/{question_id}/reply")
+def reply(question_id: str, body: ReplyIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    """Answer in your own words. Vestly shows how it read the reply; nothing counts until you confirm."""
+    from app.cases.replies import as_dict, propose_reply
+
+    return as_dict(propose_reply(db, question_id, who, body.text))
+
+
+@router.post("/questions/replies/{draft_id}/confirm")
+def confirm(draft_id: str, body: ConfirmIn, db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
+    from app.cases.replies import confirm_reply
+
+    case = confirm_reply(db, draft_id, who, body.accept)
     return service.timeline(db, case)
 
 

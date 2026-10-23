@@ -1,0 +1,32 @@
+{
+  "note": "Synthetic documents for the extraction tests. Each has the fields a careful reader must find, word for word. The bad readings are what a model might return; code must refuse them.",
+  "documents": [
+    {
+      "title": "Owen Blake address and account email",
+      "text": "From: owen.blake@northlight.example\nTo: payroll@northlight.example\nDate: 2026-06-18\nSubject: new bnak details\n\nhi, moved banks last week\nAcct: 2002007711\nSort code: 20-00-11\nName: Owen Blake\ncheers",
+      "expected": {"document_kind": "bank_detail_change", "requested_account": "2002007711", "employee_name": "Owen Blake", "sent_on": "2026-06-18"}
+    },
+    {
+      "title": "Greta Hoffmann leave note",
+      "text": "From: greta.hoffmann@northlight.example\nTo: hr@northlight.example\nDate: 2026-06-09\nSubject: Urlaub\n\nI am on leave 2026-07-06 to 2026-07-17.\nName: Greta Hoffmann",
+      "expected": {"document_kind": "other", "employee_name": "Greta Hoffmann", "sent_on": "2026-06-09"}
+    },
+    {
+      "title": "Unsigned forwarding note",
+      "text": "fwd fwd fwd\nplease pay the attached invoice asap\nACCOUNT : 5550001112\nthanks",
+      "expected": {"document_kind": "bank_detail_change", "requested_account": "5550001112"}
+    }
+  ],
+  "bad_readings": [
+    {
+      "title": "Owen Blake address and account email",
+      "why": "A digit changed: the value and its quote are not in the text.",
+      "reading": {"document_kind": "bank_detail_change", "fields": [{"name": "requested_account", "value": "2002007717", "quote": "Acct: 2002007717"}]}
+    },
+    {
+      "title": "Owen Blake address and account email",
+      "why": "The quote is real but the value was added: a routing number the email never gives.",
+      "reading": {"document_kind": "bank_detail_change", "fields": [{"name": "routing", "value": "222000333", "quote": "Sort code: 20-00-11"}]}
+    }
+  ]
+}

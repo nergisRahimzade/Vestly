@@ -13,7 +13,7 @@ from app.agent.model import tool_results
 
 # The checks each kind of case calls for, beyond reading the case. Each entry: (tool, input builder).
 INVESTIGATIONS = {
-    "bank_detail_change": [("get_employee_record", "person"), ("search_precedents", "bnk")],
+    "bank_detail_change": [("get_employee_record", "person"), ("search_precedents", "bnk"), ("extract_document", "document")],
     "uncleared_funding": [("reconcile_funding", "entity"), ("get_bank_transactions", "payment")],
     "funding_booked_not_cleared": [("reconcile_funding", "entity"), ("get_bank_transactions", "payment")],
     "contribution_rate_break": [("compute_contributions", "entity")],
@@ -58,8 +58,11 @@ def _investigation(case: dict, available: set[str]) -> list[dict]:
         "bnk": {"rule": "BNK-1"},
         "none": {},
     }
+    emails = [item for item in case["finding"]["basis"] if item.get("type") == "document" and "email" in (item.get("title") or "").lower()]
+    if emails:
+        inputs["document"] = {"content_hash": emails[0]["doc_sha256"]}
     plan = INVESTIGATIONS.get(case["kind"], DEFAULT_INVESTIGATION)
-    return [call(name, inputs[builder]) for name, builder in plan if name in available]
+    return [call(name, inputs[builder]) for name, builder in plan if name in available and builder in inputs]
 
 
 def honest_report(done: list[dict]) -> dict:
