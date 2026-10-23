@@ -75,8 +75,21 @@ def _other_holders(session: Session, employee_number: str, account: str, period:
     return sorted(f"{name} ({number})" for number, name in rows)
 
 
-def check_pay_destination(session: Session, employee_number: str, account: str, period: str, pay_date: str) -> Verdict:
-    """Net pay may go to the HR bank master. Any other account needs a confirmed call-back in the window."""
+def check_pay_destination(
+    session: Session, employee_number: str, account: str, period: str, pay_date: str, checked_on: str | None = None
+) -> Verdict:
+    """Net pay may go to the HR bank master. Any other account needs a confirmed call-back in the window.
+
+    An account the controller blocked (a BNK-1 precedent scoped to it) takes no pay at all, for anyone, from the
+    day of the ruling. Money is judged by the rulings in force on the day it moves (`checked_on`, today by default),
+    whatever its pay date.
+    """
+    from app.record.precedents import search_precedents
+
+    blocked = search_precedents(session, checked_on or today(session), rule="BNK-1", account=account)
+    if blocked:
+        ruling = blocked[0]
+        return deny("BNK-1", f"Account {account} is blocked by {ruling.id} ({ruling.decided_by}, {ruling.decided_on}): {ruling.ruling}")
     master = hr_bank_account(session, employee_number, period)
     others = _other_holders(session, employee_number, account, period)
     if master is not None and master == account and not others:

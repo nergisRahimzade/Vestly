@@ -835,13 +835,16 @@ class PrecedentProposalInput(ToolInput):
     rule: str
     scope_entity: Literal["US", "UK", "DE"] | None
     scope_employee: str | None
+    scope_account: str | None = None
     ruling: str
 
 
 @register(
     "propose_precedent", "gated", ("payroll", "equity"), "propose_precedent",
     """Suggest that a ruling on this case become a precedent, with its rule id and scope (an entity, an employee,
-    or neither for the whole rule). Only the controller makes precedents; this asks them.""",
+    an account, or none for the whole rule). Under BNK-1 an account scope blocks pay to that account for anyone, in
+    every entity: use it when HR's call-back shows the account is not the employee's. The account must be one this
+    case's finding names. Only the controller makes precedents; this asks them.""",
     PrecedentProposalInput,
 )
 def propose_precedent(ctx, args: PrecedentProposalInput) -> ToolResult:
@@ -852,7 +855,26 @@ def propose_precedent(ctx, args: PrecedentProposalInput) -> ToolResult:
 
     if not _re.match(r"^[A-Z]{3}-\d+$", args.rule) or args.rule not in dict(load_policy().rules):
         return ToolResult.refused(None, f"{args.rule} is not a rule in the policy.")
-    scope = {key: value for key, value in (("entity", args.scope_entity), ("employee", args.scope_employee)) if value}
+    scope = {
+        key: value
+        for key, value in (("entity", args.scope_entity), ("employee", args.scope_employee), ("account", args.scope_account))
+        if value
+    }
+    if args.scope_account:
+        finding = ctx.session.get(Reconciliation, ctx.case.finding_id)
+        named = {str(value) for value in json.loads(finding.details_json or "{}").values() if isinstance(value, str)}
+        if args.scope_account not in named:
+            return ToolResult.refused(None, f"Account {args.scope_account} is not named in this case's finding; a precedent can only scope what the record shows.")
+    earlier = ctx.session.scalar(
+        select(PrecedentProposal).where(
+            PrecedentProposal.case_id == ctx.case.id,
+            PrecedentProposal.rule == args.rule,
+            PrecedentProposal.scope_json == json.dumps(scope, sort_keys=True),
+            PrecedentProposal.status.in_(("proposed", "confirmed")),
+        )
+    )
+    if earlier is not None:
+        return ToolResult.refused(None, f"This case already proposed {args.rule} with scope {scope or 'the whole rule'} ({earlier.status}).")
     result = _ask(ctx, [CONTROLLER_HANDLE], f"Proposed precedent under {args.rule}, scope {scope or 'the whole rule'}: {args.ruling} Confirm to make it a precedent, or decline.")
     if result.status != "pending":
         return result

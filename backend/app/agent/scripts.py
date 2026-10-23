@@ -10,6 +10,7 @@ lie on purpose, to prove the claim checker stops them.
 import json
 
 from app.agent.model import tool_results
+from app.auth.identities import CONTROLLER_HANDLE as CONTROLLER
 
 # The checks each kind of case calls for, beyond reading the case. Each entry: (tool, input builder).
 INVESTIGATIONS = {
@@ -71,7 +72,29 @@ def _investigation(case: dict, available: set[str]) -> list[dict]:
     if emails:
         inputs["document"] = {"content_hash": emails[0]["doc_sha256"]}
     plan = INVESTIGATIONS.get(case["kind"], DEFAULT_INVESTIGATION)
-    return [call(name, inputs[builder]) for name, builder in plan if name in available and builder in inputs]
+    checks = [call(name, inputs[builder]) for name, builder in plan if name in available and builder in inputs]
+    block = _account_block(case)
+    if block is not None and "propose_precedent" in available:
+        checks.append(call("propose_precedent", block))
+    return checks
+
+
+def _account_block(case: dict) -> dict | None:
+    """HR declined an emailed bank change after its call-back: propose blocking that account for everyone."""
+    if case["kind"] != "bank_detail_change":
+        return None
+    account = (case["finding"].get("details") or {}).get("requested_account")
+    declined = any(question["status"] == "declined" and question["asked_to"] != CONTROLLER for question in case["questions"])
+    proposed = any(question["question"].startswith("Proposed precedent under BNK-1") for question in case["questions"])
+    if not account or not declined or proposed:
+        return None
+    return {
+        "rule": "BNK-1",
+        "scope_entity": None,
+        "scope_employee": None,
+        "scope_account": account,
+        "ruling": f"Account {account} came from an email HR's call-back disproved; pay nobody at it, in any entity.",
+    }
 
 
 def honest_report(done: list[dict]) -> dict:
@@ -102,6 +125,11 @@ def honest_report(done: list[dict]) -> dict:
             )
         if result.get("partial"):
             sentences.append(f"{item['name']} returned only part of what was asked.")
+        if item["name"] == "propose_precedent" and result["status"] == "pending":
+            account = item["input"].get("scope_account")
+            reach = f"blocking account {account} in every entity" if account else "for the controller"
+            sentences.append(f"Proposed a {item['input']['rule']} precedent {reach}; waiting for {CONTROLLER} to confirm it.")
+            claims.append({"outcome": "asked", "subject": CONTROLLER, "evidence_id": result["evidence_id"]})
     if not sentences:
         sentences.append("No tool returned a usable result in this run.")
     return {"summary": " ".join(sentences), "claims": claims}

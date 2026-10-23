@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.agent.routes import router as agent_router
+from app.auth.routes import router as auth_router
 from app.cases.routes import router as cases_router
 from app.fx.routes import router as fx_router
 from app.controls.gate import log_refusal
@@ -13,6 +14,8 @@ from app.db import SessionLocal, init_db
 from app.ledger.errors import LedgerError
 from app.ledger.routes import router
 from app.equity.routes import router as equity_router
+from app.eval.routes import router as eval_router
+from app.memory.routes import router as memory_router
 from app.payroll.routes import router as payroll_router
 from app.reconcile.routes import router as reconcile_router
 from app.record.routes import router as record_router
@@ -75,6 +78,9 @@ app.include_router(controls_router)
 app.include_router(cases_router)
 app.include_router(agent_router)
 app.include_router(fx_router)
+app.include_router(auth_router)
+app.include_router(memory_router)
+app.include_router(eval_router)
 
 
 @app.exception_handler(LedgerError)

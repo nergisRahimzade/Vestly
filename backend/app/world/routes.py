@@ -9,6 +9,7 @@ from app.auth.deps import current_actor
 from app.auth.identities import Actor
 from app.auth.permissions import SOURCES_AGGREGATE, SOURCES_INDIVIDUAL, WORLD_LOAD, allowed, require
 from app.db import get_db
+from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.policy.loader import load_policy
 from app.world.access import individual_scope, log_access
@@ -361,3 +362,22 @@ def documents(period: str, db: Session = Depends(get_db), who: Actor = Depends(a
         }
         for row in rows
     ]
+
+
+@router.get("/documents/{content_hash}")
+def document(content_hash: str, db: Session = Depends(get_db), who: Actor = Depends(aggregate_reader)) -> dict:
+    """One stored document by its SHA-256, as a decision cited it. The body needs individual access and is logged."""
+    row = db.scalar(select(SourceDocument).where(SourceDocument.content_hash == content_hash))
+    if row is None:
+        raise LedgerError("unknown_document", f"No stored document has hash {content_hash}.", 404)
+    with_body = allowed(who, SOURCES_INDIVIDUAL)
+    if with_body:
+        log_access(db, who, "document", row.period, [row.title])
+    return {
+        "system": row.system,
+        "period": row.period,
+        "title": row.title,
+        "content_hash": row.content_hash,
+        "received_on": row.received_on,
+        "body": row.body if with_body else None,
+    }

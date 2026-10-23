@@ -20,7 +20,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.identities import PAYROLL_SEAT, Actor
+from app.auth.identities import IDENTITIES, PAYROLL_SEAT, Actor
 from app.controls.callbacks import check_pay_destination
 from app.errors import ContextError
 from app.controls.clock import today
@@ -32,6 +32,8 @@ from app.ledger.money import money_str
 from app.ledger.service import draft_entry, live_entry_for_key, post_approved, require_entry
 from app.record.evidence import record
 from app.world.models import BankLine, FundingInstruction, SourceDocument
+
+ROLE_OF = {handle: role for handle, _name, role, _dept in IDENTITIES}
 
 SERVICE = "posting.service"
 LIVE_LINE = ("requested", "sent", "confirmed")
@@ -208,6 +210,12 @@ def send_unconfirmed(session: Session, request: FundingRequest, by: str) -> dict
     """Send each line without a bank confirmation, under its own idempotency key. Confirmed lines are left alone."""
     if request.status not in ("released", "confirmed"):
         raise LedgerError("not_released", f"Funding request {request.id} is {request.status}, not released.", 409)
+    # A ruling made since the request (a blocked account) stops the whole batch before the bank hears of it.
+    on = today(session)
+    who = Actor(by, ROLE_OF.get(by, "none"))
+    for line in lines_of(session, request):
+        if line.status in ("requested", "sent") and _confirmation(session, line) is None:
+            enforce(check_pay_destination(session, line.employee_number, line.destination_account, request.period, on), who, "release_funding")
     sent, timed_out = [], []
     for line in lines_of(session, request):
         if line.status not in ("requested", "sent"):

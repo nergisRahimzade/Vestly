@@ -183,6 +183,12 @@ def create_precedent(body: PrecedentIn, db: Session = Depends(get_db), who: Acto
     return precedent_dict(rule_precedent(db, who, **body.model_dump()))
 
 
+@router.get("/precedents")
+def list_precedents(db: Session = Depends(get_db), _who: Actor = Depends(precedent_reader)) -> list[dict]:
+    """Every precedent ever ruled, overruled ones included: nothing is deleted."""
+    return [precedent_dict(row) for row in db.scalars(select(Precedent).order_by(Precedent.valid_from, Precedent.id))]
+
+
 @router.get("/precedents/search")
 def find_precedents(
     on: str,
@@ -190,10 +196,11 @@ def find_precedents(
     employee: str | None = None,
     entity: str | None = None,
     fact: str | None = None,
+    account: str | None = None,
     db: Session = Depends(get_db),
     _who: Actor = Depends(precedent_reader),
 ) -> list[dict]:
-    rows = search_precedents(db, on, rule=rule, employee=employee, entity=entity, fact=fact)
+    rows = search_precedents(db, on, rule=rule, employee=employee, entity=entity, fact=fact, account=account)
     return [precedent_dict(row) for row in rows]
 
 

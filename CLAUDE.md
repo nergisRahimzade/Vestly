@@ -243,10 +243,11 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 16: the company world (307 people, Jan 2022–Oct 2026, October open), history cases, two worlds | `data/four-years-company` |
 | Task 17: employee memory (`app/memory/`), learned observations, history detectors; company October 21/21 | `agent/employee-memory` |
 | Task 18: replay, challenge, precedent proposals, simulated approvers, `/agent/ask` | `agent/challenge-replay-and-approvers` |
+| Task 19: React UI (login picker, the moment, inboxes, case page, evidence, memory, policy, FX, proof), account-scoped precedents (D26), Playwright walk | `frontend/inbox-timeline-evidence` |
 
 **Plan revised 2026-10-23 (D20–D22):** real Open Exchange Rates rates at each month-end; the world aligned with today (Jan 2022–Sep 2026 closed, October 2026 open, Nov–Dec to come); four years of history for every employee; planted errors in July–December. Until task 16 lands, the code still has the January–June world with June open (section 10).
 
-**Next: task 19 `frontend/inbox-timeline-evidence`** (pull from `agent/challenge-replay-and-approvers`), then 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
+**Next: task 20 `data/held-out-and-scenarios`** (pull from `frontend/inbox-timeline-evidence`), then 21 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
@@ -257,5 +258,6 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 - Exchange rates: `python -m app.fx.update --month-ends FIRST LAST --record` fetches month-end rates (one request each; free plan 1,000/month) and records them in `fixtures/fx`; `--daily` fetches yesterday's final and today's latest. Tests never call the API.
 - Two worlds (`VESTLY_WORLD`): `company` (default: app, scorer, demo; 307 people, Jan 2022–Oct 2026, October open, clock 2026-11-02, answer key `fixtures/company/answer_key.json`) and `cast` (the unit tests' June scenario; `tests/conftest.py` selects it). `python -m app.eval.score --world company --runs 3` scores October; `--world cast` scores June. The company world loads in ~35 s the first time in a process; later fresh databases restore a snapshot.
 - Regenerate fixtures after generator changes: `python -c "from app.world.drops import write_fixtures; write_fixtures()"` from `backend/`; a test checks the committed fixtures match.
+- UI: `cd frontend; npm install --cache D:/NR/.npm-cache` once, then start the backend (`uvicorn app.main:app` from `backend/`) and `npm run dev` (http://localhost:5173, `/api` proxied to port 8000). `npm run e2e` walks the moment in Edge on a fresh company world (its own backend on port 8765, database in `frontend/e2e/.db`, scripted model, no FX job). The Proof screen reads `backend/reports/score-company.json`, written by `python -m app.eval.score --world company --runs 3 --json reports/score-company.json`.
 - After a schema change, delete the local `backend/vestly.db` (git-ignored) before starting the server.
 - Windows machine. Multi-line bash heredocs with quotes have failed in this harness; write edit scripts to the scratchpad and run them with `python -I`. Drive C: was full on 2026-10-23 (Docker stopped then); the repo is on D:.

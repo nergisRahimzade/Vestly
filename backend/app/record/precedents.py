@@ -1,8 +1,9 @@
 """Precedents: what a person ruled once, applied again where its scope and dates say so.
 
 Matching is structured, not a text search. A precedent's scope names the keys it is
-limited to (employee, entity, fact); an empty scope covers the whole rule. A case
-matches when it has every key the scope names, with the same value.
+limited to (employee, entity, fact, account); an empty scope covers the whole rule. A case
+matches when it has every key the scope names, with the same value. A BNK-1 precedent
+scoped to an account blocks pay to that account for anyone, in every entity.
 """
 
 import json
@@ -19,7 +20,7 @@ from app.record.evidence import canonical, document_basis, record
 from app.record.models import Precedent
 from app.world.models import SourceDocument
 
-SCOPE_KEYS = ("employee", "entity", "fact")
+SCOPE_KEYS = ("employee", "entity", "fact", "account")
 RULE_ID = re.compile(r"^[A-Z]{3}-\d+$")
 
 JONAH_RULING_TITLE = "Controller rejection of Jonah Hale bank change"
@@ -113,10 +114,11 @@ def search_precedents(
     employee: str | None = None,
     entity: str | None = None,
     fact: str | None = None,
+    account: str | None = None,
 ) -> list[Precedent]:
     """Precedents in force on a date whose scope the case satisfies."""
     _require_date("on", on)
-    case = {"employee": employee, "entity": entity, "fact": fact}
+    case = {"employee": employee, "entity": entity, "fact": fact, "account": account}
     rows = list(session.scalars(select(Precedent).order_by(Precedent.valid_from, Precedent.id)))
     overruled_by = {row.overrules: row for row in rows if row.overrules is not None}
     matches = []

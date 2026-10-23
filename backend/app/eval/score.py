@@ -71,7 +71,17 @@ def main(argv: list[str] | None = None) -> int:
     report, results = score_period(period, args.runs, world=args.world)
     print(render(report))
     if args.json:
-        payload = {"report": report, "runs": [run_as_dict(run) for run in results]}
+        from datetime import datetime, timezone
+
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "command": f"python -m app.eval.score --world {args.world} --period {period} --runs {args.runs}",
+            "world": args.world,
+            "exit_code": 0 if report["passed"] else 1,
+            "report": report,
+            "runs": [run_as_dict(run) for run in results],
+        }
+        args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return 0 if report["passed"] else 1
 

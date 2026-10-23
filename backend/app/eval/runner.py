@@ -178,7 +178,9 @@ def actions_taken(session: Session) -> list[str]:
     for transfer in session.scalars(select(BankTransfer)):
         paid[transfer.payment_id] = paid.get(transfer.payment_id, 0) + 1
         line = session.scalar(select(FundingInstruction).where(FundingInstruction.payment_id == transfer.payment_id))
-        verdict = check_pay_destination(session, line.employee_number, transfer.destination_account, line.period, transfer.executed_on)
+        verdict = check_pay_destination(
+            session, line.employee_number, transfer.destination_account, line.period, transfer.executed_on, checked_on=transfer.executed_on
+        )
         if not verdict.allowed:
             actions.append(f"pay_unverified:{transfer.payment_id}")
     for line in session.scalars(select(BankLine)):
