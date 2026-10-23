@@ -595,13 +595,16 @@ frontend/           # NEW  React (Vite)
 | D9 | Two thresholds: materiality 25.00 USD decides who looks at a difference; LIM-1 25,000.00 USD decides how many approve. | They were the same number with different meanings. |
 | D10 | A login picker issues tokens; `VESTLY_TOKEN_SECRET` is set outside tests. | Fixes G15. |
 | D11 | Scripted model mode is a first-class backend, not a test stub. | Deterministic tests, offline demos, and a baseline the live model is scored against. |
-| D13 | Vestly's books start with the first loaded month (January 2026). Before that, the ledger is taken to agree with the subledger per grant (the opening position). The true-up and its per-grant explanation cover only the months since the last live true-up. | The world has no 2024–2025 ledger; the assumption is stated in code and in the draft response (`window_start`, `explained_from`). |
+| D13 | *(Superseded by D22 once task 16 lands.)* Vestly's books start with the first loaded month (January 2026). Before that, the ledger is taken to agree with the subledger per grant (the opening position). The true-up and its per-grant explanation cover only the months since the last live true-up. | The world has no 2024–2025 ledger; the assumption is stated in code and in the draft response (`window_start`, `explained_from`). |
 | D14 | After a transfer, stock expense is booked in the new entity's currency, translated from the grant currency through each currency's USD reference rate for the month. No rate means no draft; a person supplies it. | Tomas's 500.00 EUR becomes 425.49 GBP; nothing books at a guessed rate. |
 | D15 | The scorer matches a decision by (kind, subject); a scenario with no planted subject (A13) matches by kind. Outcomes are `held`, `ready`, `rejected_duplicate`, `refused`, `needs_human`. `must_cite` lists rules, precedents and the authority row (the policy fact); `must_not` lists actions (`request_funding:<payment>`, `reopen:<entity>:<period>`, `request_reopen:…`, `approve_by_agent`). Decisions on a planted subject under another kind (Hannah's dates conflict next to her forfeiture) are neutral; `related` names payment lines that belong to a case so they are not counted as clean. Actions come from the evidence log, so a refused attempt is never an action. | The score must come from what the run left in the database, and a perfect stub, a sloppy stub and a sabotaged close must each score what they deserve. |
 | D16 | A case has a `state` (where the work is) and an `outcome` (what code decided: held, ready, rejected_duplicate, needs_human); the scorer reads the outcome. A case links only to journals its own seat drafted. Funding is approved by treasury (`release_funding`); above the limit the controller co-approves (`approve_funding`), and the controller alone never sends money. The bank is simulated and keeps its own append-only record keyed by idempotency key (the payment id); Vestly drafts a cash journal (2100/1000) for each payment the bank confirms. Every policy action names its resource and verb (create, read, update; never delete). | Keeps work and decision apart, keeps seats apart, puts the money path where the model can't reach it, and makes "who may do what to which record" readable in one table. |
 | D17 | Vestly cannot claim results it did not get. Every tool returns one `ToolResult` (status `ok`/`failed`/`pending`/`refused`, data, error, evidence id, `partial`, `fallback`); the agent may state only outcomes a tool result in this run shows; a claim checker in code checks the final message against this run's audit log and blocks unsupported claims as `false_claim`. `run_tests` takes no arguments from the model. `convert_currency` may fall back to the latest earlier reference rate, named with its date, for sizing and reporting only; booking still refuses any rate that is not the period's own (D14). | "Trust me" is the weak version the brief warns against. Enforcing it in code means a prompt change or a new tool cannot quietly reintroduce invented success. |
 | D18 | Each tool result lists what it `establishes` as (subject, outcome) pairs, worked out by code from the result; a claim is backed only by a tool call of the same run that establishes exactly that pair. `propose_entry` takes which draft to make (`payroll_close` or `equity_trueup`), never amounts. The agent may set a case's outcome only in the safe direction (`hold_case`) or after a `check_duplicate` in the same run (`reject_duplicate`); an outcome-only step keeps the workflow state. Quoted text in a report must match the run's tool results word for word. The model client keeps the SDK's own transport retries (429/5xx); tools never retry. | The checker needs facts it can compare, not wording; amounts stay out of the model's hands; quotes cannot be used to smuggle claims. |
 | D19 | A reply Vestly reads is a draft until its writer confirms it; a reading whose quote or corrected value is not in the reply is marked unreadable and never offered as fact. A correction counts as a decline that records the corrected value: the wrong value lives in a source, which must be fixed there before anything moves. Detection of the bank change stays deterministic; extraction is how the agent reads a document, checked by code, not a replacement for the detector. | People's words count only in the form they agreed to; a model's reading never becomes an answer on its own. |
+| D20 | Reference rates are real, from Open Exchange Rates (USD base), stored append-only. A month's rate is the rate for its last calendar day, because salaries are paid at month end; a month cannot be locked until that rate is stored. History is backfilled one month-end at a time (about 58 requests) and then one request a day. The drop's rate is the management pack. | The user asked for real rates; month-end matches when pay moves; the free plan's 1,000 requests a month cannot hold daily history since 2022. |
+| D21 | The world is aligned with today: January 2022 to September 2026 closed, October 2026 open, November and December arrive when their dates do. The 13 scored cases and the demo move to October; Jonah's March 2026 ruling stays the precedent. | The user's choice: real rates only exist up to today, and the open month should be the real current month. |
+| D22 | Every employee of every department has at least four years of history (hire dates from 2018, drops from January 2022); the ledger starts January 2022. July to December 2026 each carry 2 to 4 planted errors with their own answer keys, some catchable only from the history. Unit tests use the 15-person cast with full history; the scorer and demo use the full company. | The agent's memory must be long enough to be accurate; history-only errors prove it is used. |
 | D12 | One error, one period. Every Vestly journal carries a booking key (wages per entity and period, a correction per person and source period); the database refuses a second active entry with the same key; equity catch-ups are cumulative subledger minus cumulative booked. | Fixes G16 and makes DUP-1 a database rule, not a hope. |
 
 ---
@@ -714,42 +717,110 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 - Free-text human replies turned into structured answers (approve, decline, partial, corrected value), shown to the human for confirmation before they count.
 - Tests: Maya's noisy email yields account 9911882277 with a quote; an extraction that adds a value not in the text is refused; a partial answer triggers a follow-up question.
 
-**Task 14 · [AI/ML] `agent/challenge-replay-and-approvers`**
+### Revised plan (2026-10-23): real rates, four years of history, aligned with today
+
+The user decided: real exchange rates from Open Exchange Rates for every month; Vestly's world aligned with
+today (January 2022 to September 2026 closed, **October 2026 open now**, November and December still to
+come); every employee of every department with at least four years of history; July to December each
+with their own planted errors. Decisions D20 to D22. Tasks 14 to 21 replace the old 14 to 18.
+
+**Task 14 · [Backend] `fix/error-context`**
+
+- Error handling at every boundary of the existing code: file and drop loads, the database (integrity
+  errors translated with the ids involved), the tools, the posting service and the simulated bank, the
+  case service, the model and reader clients. Each catch adds what was being done and with which ids,
+  then re-raises or returns an honest result; nothing is swallowed.
+- One handler for unexpected errors: it logs where (module, function, line) and why, with the request,
+  and returns a plain 500 with an error id that matches the log line.
+- Live agent tests (`tests/test_agent_live.py`): a few small runs against the real Claude API when
+  `ANTHROPIC_API_KEY` is set (one honest case report, one refused call reported, structured output on a
+  tool-using turn); reported as skipped when the key is absent.
+- Tests: a corrupt drop names the file and the section; a failing tool names the tool, the case and the
+  error; an unexpected error returns its error id and the log names the line.
+
+**Task 15 · [Backend] `fx/open-exchange-rates`**
+
+- `app/fx/`: an Open Exchange Rates client (USD base; app id from `OPENEXCHANGERATES_APP_ID`), an
+  append-only `fx_rates` table (date, base, rates, the provider's timestamp, response hash, fetched at).
+- Backfill: one historical request per month-end from January 2022 to the last closed month (about 58
+  requests; the free plan allows 1,000 a month), then one request a day from now on: a daily job in the
+  app and `python -m app.fx.update` for an outside scheduler.
+- The month's reference rate is the rate for its **last calendar day** (salaries are paid at month end).
+  Locking a month requires that rate to be stored; a month whose last day has not come (November,
+  December) cannot be locked yet. Drafts translate only at the month's own rate (D14 stands).
+- Every reader of a reference rate (drafts, materiality, the FX band check, `convert_currency`) reads
+  `fx_rates`, never the drop. The drop's rate stays as the **management pack** (the rate Northlight's old
+  process used), so the FX band check compares a real reference with what was used.
+- Tests use recorded responses and never call the API; a network failure, a bad app id, a missing
+  month-end and the quota error each name what failed.
+
+**Task 16 · [Data] `data/four-years-company`**
+
+- The generator builds the whole company: about 300 employees across US, UK and Germany and the four
+  departments, hire dates from 2018, so everyone hired by 2022 has at least four years of history.
+- Monthly drops from January 2022 to December 2026: HR, registers, payment files, bank, equity platform,
+  ledger exports, emails, call-backs; pay changes, transfers, leavers, bank changes and grants spread over
+  the years; amounts translated at the real month-end rates from task 15.
+- January 2022 to September 2026 arrive closed (booked by the old process); October 2026 is the open
+  month; November and December arrive only when their dates come (and their rates exist).
+- The 13 scored cases move to October 2026 (Maya's emailed change before the October run; Jonah's
+  ruling stays in March 2026 as the precedent; Priya's March overpayment found in October; Evan's raise
+  back-dated into closed months; Tomas transfers on 1 October; the half-cleared batch and partial funding
+  are October's). The answer key's amounts are recomputed at the real rates; the expected values change
+  because the rates are now real, and the change is recorded, not hidden.
+- July to December each get 2 to 4 new planted errors with their own answer keys, including some only
+  four years of history can catch (a leaver from 2023 paid again, a bank account reused by two people, a
+  2022 grant forfeited in 2024 and still expensed, pay drifting above the last approved raise).
+- Two world sizes: the 15-person cast with its full history for unit tests, the full company for the
+  scorer and the demo. Tests load a world once per session and copy the database per test, so the suite
+  stays fast.
+
+**Task 17 · [AI/ML] `agent/employee-memory`**
+
+- The agent's memory of the company: for every employee, a timeline of at least four years (hire,
+  entity and department moves, approved pay, pay actually received, bank accounts and call-backs, grants
+  and vesting, earlier cases, answers and rulings), and per department the normal patterns (headcount,
+  pay bands, contribution rates) learned from that history.
+- Tools `get_employee_history` (one person, inside a case, PRV-1) and `get_department_history` (totals
+  only), both returning `ToolResult`s with what they establish.
+- Self-learning: patterns learned from the history are recorded as observations with the months they
+  rest on, so the agent cites them like any other evidence; a correction becomes a precedent.
+- Detectors use the history (pay above the last approved raise since 2022, a returning leaver, a reused
+  bank account).
+- Tests: each history-only plant is caught by the scorer three times; an employee's 2022 bank account
+  appears in their timeline; a department baseline cites its months.
+
+**Task 18 · [AI/ML] `agent/challenge-replay-and-approvers`**
 
 - As-of replay as a filtered read of the evidence log.
-- Challenge mode: answers only from a decision's evidence rows and the replayed state, citing event ids; the decision does not change unless the fix goes through approval.
+- Challenge mode: answers only from a decision's evidence rows and the replayed state, citing event ids;
+  the decision does not change unless the fix goes through approval.
 - Precedent scope proposals; the controller confirms.
-- Simulated approvers (HR, controller, treasury, legal, provider, department heads): scripted for tests and recordings, model-played for live runs, and always answerable by hand.
-- Tests: the Maya challenge cites P-2026-03-001, BNK-1 and the policy hash, and the hold stands; replay before 2 April shows Priya active; the salary request is refused with totals offered.
+- Simulated approvers (HR, controller, treasury, legal, provider, department heads): scripted for tests
+  and recordings, model-played for live runs, and always answerable by hand.
+- Tests: the Maya challenge cites P-2026-03-001, BNK-1 and the policy hash, and the hold stands; replay
+  before Priya's termination was recorded shows her active; the salary request is refused with totals.
 
-### The interface
-
-**Task 15 · [Frontend] `frontend/inbox-timeline-evidence`**
+**Task 19 · [Frontend] `frontend/inbox-timeline-evidence`**
 
 - Login picker; the token sets the identity and the UI never sends a role.
-- Approvals inbox, case timeline, evidence drill-down with document quotes, challenge box, policy view, scorer table, and the moment screen.
+- Approvals inbox, case timeline, evidence drill-down with document quotes, employee history, challenge
+  box, policy view, FX rates with their dates, scorer table, and the moment screen.
 - Tests: Playwright walk through the sixty-second moment in scripted mode.
 
-### Data at scale
+**Task 20 · [Data + Backend] `data/held-out-and-scenarios`**
 
-**Task 16 · [Data] `data/six-months-at-scale`**
-
-- About 300 background employees across entities and departments, hire dates 2022–2026, grants for most, January to June registers, vest reports, bank and ledger exports, an email inbox and a call-back log.
-- Registers and emails rendered as PDFs, some with scan noise; extraction runs on them.
-- Tests: the false-hold rate on the full world stays under 5%; every generated ledger entry balances; the close finishes in an acceptable time.
-
-**Task 17 · [Data + Backend] `data/held-out-and-scenarios`**
-
-- July 2026 with a different mix of plants and its own answer key.
+- November and December as held-out months, closed when their dates and rates arrive, scored without
+  code changes.
 - A scenario injector (case type, person, month) built on the plant functions, and a reset script.
-- Tests: the agent runs July without code changes and the scorer reports on it; an injected ghost employee is caught and routed to HR.
+- Registers and emails rendered as PDFs, some with scan noise; extraction runs on them.
+- Tests: an injected ghost employee is caught and routed to HR; the false-hold rate on the full world
+  stays under 5%.
 
-### Wrap-up
-
-**Task 18 · [All] `docs/readme-and-demo`**
+**Task 21 · [All] `docs/readme-and-demo`**
 
 - README: the seats, how to run, what is real and what is simulated, the pass³ numbers.
-- Demo script opening with the moment, recorded from a scored run.
+- Demo script opening with the moment (now in October), recorded from a scored run.
 
 ---
 
@@ -758,3 +829,5 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 **Real:** the ledger and its database constraints, the policy and authority table, the deterministic services, the detectors, the drafts, the controls and separation of duties, the case workflow, the evidence log, the agent loop and its model calls, and the scorer.
 
 **Simulated:** Northlight Labs, its employees, documents, bank, payroll provider, HR system and equity platform, the statutory rates, the approvers, and the clock.
+
+**Real data (from task 15):** exchange rates, from Open Exchange Rates, at each month's last day.

@@ -238,7 +238,9 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 12: agent tools, loop, Claude and scripted models, claim checker, `run_tests`, `convert_currency` | `agent/tools-and-loop` |
 | Task 13: document extraction checked against the text; free-text replies confirmed by their writer | `agent/extraction-and-answers` |
 
-**Next: task 14 `agent/challenge-replay-and-approvers`** (pull from `agent/extraction-and-answers`), then 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Plan revised 2026-10-23 (D20–D22):** real Open Exchange Rates rates at each month-end; the world aligned with today (Jan 2022–Sep 2026 closed, October 2026 open, Nov–Dec to come); four years of history for every employee; planted errors in July–December. Until task 16 lands, the code still has the January–June world with June open (section 10).
+
+**Next: task 14 `fix/error-context`** (pull from `plan/fx-errors-live`), then 15 Open Exchange Rates, 16 four-year company, 17 employee memory, 18 challenge/replay/approvers, 19 UI, 20 held-out Nov–Dec and scenarios, 21 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
