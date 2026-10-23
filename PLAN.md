@@ -140,11 +140,48 @@ Every tool call passes the policy gate. Entries post and funding goes out throug
 ```text
 Case opens ─► Model turn ─► Tool call (strict JSON) ─► Policy gate ─► Run tool + evidence
                   ▲                                                          │
-                  └──────── tool_result: honest ok / fail / refused ◄────────┘
+                  └──── tool_result: ok / failed / pending / refused + evidence id ◄────┘
              no more tool calls ─► Outcome decided by code from recorded results
+             final message ─► Claim checker against this run's audit log ─► shown, or blocked as a false claim
 ```
 
 A refused action comes back to the model as a refusal with a rule id it can explain, never as a silent failure. The loop has a round limit; hitting it makes the case "needs a person", never "done".
+
+### Honest results and the claim checker (D17)
+
+Vestly cannot claim a result it did not get. The rule lives in code, not only in the prompt, and covers every tool and action, including tools added later.
+
+**One result shape for every tool.** No tool returns a free-text success message.
+
+```json
+{
+  "status": "pending",
+  "data": {"approval_request": "…", "approvals_needed": 1},
+  "error": null,
+  "evidence_id": "ev_000412",
+  "partial": false,
+  "fallback": null
+}
+```
+
+- `status` is one of `ok`, `failed`, `pending`, `refused`. A refusal carries the rule id in `error`.
+- `partial: true` when only part of what was asked came back; `fallback` is filled when a tool used a substitute (for FX: `{"rate": "1.2710", "rate_date": "2026-05-31", "reason": "no June reference rate"}`).
+- `evidence_id` is the audit-log row the call wrote. Every call writes one, reads included.
+- The registry refuses to register a tool whose runner is not declared to return `ToolResult`, and a test forces each registered tool to fail and checks the shape, so a new tool is covered automatically.
+- Tools that open an approval (`propose_entry`, `request_funding`) return `pending` with the approval request id. Only a human approval event can make something approved.
+
+**What the agent may say.** Only an outcome that a tool result in this run shows. Pending means "waiting for <role>", never "approved". A failed call or timeout names the tool and the error, then the agent stops or asks; there are no silent retries and no guessed values. A fallback is named with its rate date. Missing, failed, partial, pending, refused or fallback results are reported exactly as that; when unsure, the agent reports the tool's status as-is.
+
+**The claim checker.** The final message is structured: prose plus a list of claims, each `{outcome, subject, evidence_id}`. Before anyone sees it, code:
+
+1. checks each claim against this run's audit log: the cited row exists, belongs to this run, and its status and action support the outcome (`approved` needs an `approval_given` event for that subject; `posted` a `journal_posted`; `released`/`paid` a bank-confirmed `funding_confirmed`; `converted` an `ok` FX result, with any fallback named; `tests passed` a `run_tests` result with exit code 0);
+2. scans the prose for outcome words (approved, posted, released, paid, sent, converted, reconciled, confirmed, tests pass/passed, done) and requires each to be backed by a supported claim on the same subject.
+
+An unsupported claim blocks the message, writes a `false_claim` evidence row, and the user sees a code-built status report of the tool results instead. This sits next to the faithfulness check: every number, date, account and person in a shown sentence must appear in the case's evidence.
+
+**`run_tests`.** Runs `python -m pytest -q` in `backend/` with a fixed command and no arguments from the model, so it cannot become a shell. It returns `exit_code`, `passed`, `failed`, `skipped`, `errors` and the last 60 lines of output. The exit code alone decides `ok` (0) or `failed` (anything else, or a timeout). Skips are always reported.
+
+**`convert_currency`.** Translates an amount at the reference rate for the date. With no rate for that date it falls back to the latest earlier reference rate and says so in `fallback`. A fallback rate is for sizing and reporting only: drafts still refuse it (D14; rule 4.3 "no rate → escalate").
 
 ### Model configuration
 
@@ -186,6 +223,8 @@ Each description says what the tool is for and what it is not for, because the d
 | `compute_sbc_expense` | compute | Subledger expense, reversals and the true-up against the ledger | equity |
 | `check_duplicate` | compute | Normalized payroll, payment or grant key against booked history | both |
 | `reconcile_funding` | compute | Funding instructions against bank confirmations; lists cleared, missing and diverted lines | payroll |
+| `convert_currency` | compute | An amount at the reference rate for a date; names any fallback rate and its date; never used to book | both |
+| `run_tests` | compute | Runs the test suite with a fixed command; exit code, pass/fail/skip counts, output tail | both |
 | `propose_entry` | gated | Drafts a journal entry for approval; never posts | both |
 | `request_funding` | gated | Requests release of named payment lines with an idempotency key; never pays | payroll |
 | `hold_case` | gated | Holds with a reason code and evidence ids | both |
@@ -221,12 +260,17 @@ def execute(case_id: str, seat: Seat, call) -> dict:
     try:
         args = spec.input_model.model_validate(call.input)
     except ValidationError as error:
-        result = ToolResult.fail("invalid_input", str(error))
+        result = ToolResult.failed("invalid_input", str(error))
     else:
         verdict = gate.check(spec, args, actor=seat.identity, case_id=case_id)
-        result = spec.run(case_id, args) if verdict.allowed else ToolResult.refused(verdict.rule_id, verdict.reason)
-    evidence.append(case_id, kind="tool_call", actor=seat.identity, tool=call.name, args=call.input, result=result)
-    return {"type": "tool_result", "tool_use_id": call.id, "content": result.to_json(), "is_error": not result.ok}
+        try:
+            result = spec.run(case_id, args) if verdict.allowed else ToolResult.refused(verdict.rule_id, verdict.reason)
+        except Exception as error:  # a crash or timeout is a failed result the model must report, never a retry
+            result = ToolResult.failed(type(error).__name__, str(error))
+    result = result.with_evidence(
+        evidence.append(case_id, kind="tool_call", actor=seat.identity, tool=call.name, args=call.input, result=result)
+    )
+    return {"type": "tool_result", "tool_use_id": call.id, "content": result.to_json(), "is_error": result.status in ("failed", "refused")}
 ```
 
 `model.turn` wraps `client.beta.messages.create` with the settings above, or the scripted model in offline mode.
@@ -239,7 +283,7 @@ Short, stable, about the job. Tool-specific guidance lives in tool descriptions,
 - **Goal:** every entry and funding request is supported by the HR record, the plan and grant terms, the approvals, and the bank; nothing else.
 - **Sources:** the authority table, stated once.
 - **When to ask:** only when a rule or precedent requires a person, or the evidence conflicts and no ranking settles it.
-- **Honesty:** say what could not be verified; never state a figure that did not come from a tool result.
+- **Honesty:** say what could not be verified; never state a figure that did not come from a tool result; state only outcomes a tool result in this run shows, and report failed, pending, refused, partial and fallback results exactly as they are. Code enforces this with the claim checker; the prompt only explains it.
 
 ---
 
@@ -555,6 +599,7 @@ frontend/           # NEW  React (Vite)
 | D14 | After a transfer, stock expense is booked in the new entity's currency, translated from the grant currency through each currency's USD reference rate for the month. No rate means no draft; a person supplies it. | Tomas's 500.00 EUR becomes 425.49 GBP; nothing books at a guessed rate. |
 | D15 | The scorer matches a decision by (kind, subject); a scenario with no planted subject (A13) matches by kind. Outcomes are `held`, `ready`, `rejected_duplicate`, `refused`, `needs_human`. `must_cite` lists rules, precedents and the authority row (the policy fact); `must_not` lists actions (`request_funding:<payment>`, `reopen:<entity>:<period>`, `request_reopen:…`, `approve_by_agent`). Decisions on a planted subject under another kind (Hannah's dates conflict next to her forfeiture) are neutral; `related` names payment lines that belong to a case so they are not counted as clean. Actions come from the evidence log, so a refused attempt is never an action. | The score must come from what the run left in the database, and a perfect stub, a sloppy stub and a sabotaged close must each score what they deserve. |
 | D16 | A case has a `state` (where the work is) and an `outcome` (what code decided: held, ready, rejected_duplicate, needs_human); the scorer reads the outcome. A case links only to journals its own seat drafted. Funding is approved by treasury (`release_funding`); above the limit the controller co-approves (`approve_funding`), and the controller alone never sends money. The bank is simulated and keeps its own append-only record keyed by idempotency key (the payment id); Vestly drafts a cash journal (2100/1000) for each payment the bank confirms. Every policy action names its resource and verb (create, read, update; never delete). | Keeps work and decision apart, keeps seats apart, puts the money path where the model can't reach it, and makes "who may do what to which record" readable in one table. |
+| D17 | Vestly cannot claim results it did not get. Every tool returns one `ToolResult` (status `ok`/`failed`/`pending`/`refused`, data, error, evidence id, `partial`, `fallback`); the agent may state only outcomes a tool result in this run shows; a claim checker in code checks the final message against this run's audit log and blocks unsupported claims as `false_claim`. `run_tests` takes no arguments from the model. `convert_currency` may fall back to the latest earlier reference rate, named with its date, for sizing and reporting only; booking still refuses any rate that is not the period's own (D14). | "Trust me" is the weak version the brief warns against. Enforcing it in code means a prompt change or a new tool cannot quietly reintroduce invented success. |
 | D12 | One error, one period. Every Vestly journal carries a booking key (wages per entity and period, a correction per person and source period); the database refuses a second active entry with the same key; equity catch-ups are cumulative subledger minus cumulative booked. | Fixes G16 and makes DUP-1 a database rule, not a hope. |
 
 ---
@@ -650,11 +695,14 @@ The working approach for running these tasks is to be agreed. Each task lands wi
 
 - The source adapter with the mock backend.
 - The tool registry of section 3 with strict schemas and descriptions; seat tool lists.
-- `execute`: validate, gate, run, append evidence, return an honest result.
-- The loop, the round limit, outcome decided by code, the system prompt.
+- `execute`: validate, gate, run, append evidence, return a `ToolResult` (D17): status `ok` / `failed` / `pending` / `refused`, data, error, evidence id, partial and fallback flags. No free-text success messages; existing services are wrapped, not trusted for wording.
+- The registry refuses a tool that does not return `ToolResult`.
+- `convert_currency` (reference rate, named fallback with its date, never used to book) and `run_tests` (fixed pytest command; exit code decides; counts and output tail; skips reported).
+- The loop, the round limit, outcome decided by code, the system prompt with the honesty rule.
 - `model.py`: the Claude client with the section 3 settings, and the scripted model (D11).
+- The claim checker: structured final message (prose + claims with evidence ids); each claim checked against this run's audit log; outcome words in the prose must be backed; an unsupported claim blocks the message, logs `false_claim`, and a code-built status report is shown instead.
 - A faithfulness check on every model sentence the UI shows: each number, date, account and person must appear in the case's evidence.
-- Tests: in scripted mode the June close passes the scorer three times; a refused call returns a refusal the model sees; a stub model that invents a number is rejected; the round limit gives "needs a person".
+- Tests: in scripted mode the June close passes the scorer three times; a refused call returns a refusal the model sees; a stub model that invents a number is rejected; the round limit gives "needs a person"; every registered tool forced to fail returns the structured shape; a forced tool failure is reported with the tool name and error and nothing is retried; a pending approval is never called approved (the checker blocks "approved"); with FX down the result names the fallback rate and its date, and a draft at that rate is refused; an injected fake success message ("JE-… posted", "tests pass") is blocked and logged as `false_claim`; a failing test run gives a non-zero exit code and status `failed`, and skips are counted.
 
 **Task 13 · [AI/ML] `agent/extraction-and-answers`**
 

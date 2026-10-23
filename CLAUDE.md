@@ -28,6 +28,14 @@ Also:
 - Keep `PLAN.md` current: mark tasks done, record new decisions.
 - Before claiming a fix, reproduce the problem (probe script or test) and prove it gone.
 
+### Honesty rule (for Claude, every task)
+
+- **Never claim a result you did not get.** Say "tests pass" only after running them in this turn and getting exit code 0. Show the real command and its summary line, e.g. `backend/.venv/Scripts/python.exe -m pytest -q` → `163 passed, 1 warning in 106.41s`.
+- **Report failures and skips as they are.** Never delete, skip, loosen or rewrite a test to make it pass. If a test was wrong, say why, show the fix, and keep what it checks at least as strict.
+- If a step was not run, failed, timed out or is partial, say exactly that.
+- In the summary, explain each new or changed file in the simplest terms first, then in software terms.
+- Vestly follows the same rule, enforced in code (section 4, rule 9).
+
 ## 2. The Hyphenate track (what we build for)
 
 This is a practice build for the CalHacks 2026 Hyphenate track, "The Hyphenated Enterprise: Autonomous Systems for Finance". Hyphenate has **no API** to integrate. There is no event schedule.
@@ -66,6 +74,7 @@ The design follows the user's workpaper "Vestly Payroll & Equity Agent" (VS-01, 
 6. **Nothing is deleted.** Replaced drafts are `withdrawn`; evidence, precedents, source documents, reconciliation and schedule runs are append-only in the database.
 7. **Accounting:** equity-classified awards, grant-date fair value straight-line over the service period (48 months), 12-month cliff, forfeitures when they occur (before the cliff reverse everything; after, reverse the unvested part), no expense without board approval, expense follows HR's entity and department each month, translated to the new entity's currency at reference rates. Payroll per entity and department; contributions at policy rates (US 401(k) 4%, UK pension 5%, DE social 20%); statutory rates are simulated and in policy; UK pays 26th–25th so June accrues 26–30 and July reverses it; pay after an HR termination date → 1200 receivable; cash paid to someone HR doesn't know → 1210 suspense.
 8. **Opening position:** Vestly's books start with the first loaded month (January 2026); before that the ledger is taken to agree with the subledger.
+9. **Vestly cannot claim results it did not get (D17).** Every tool, now and later, returns one structured result: `status` (`ok` | `failed` | `pending` | `refused`), `data`, `error`, `evidence_id` (its audit-log row), plus `partial` and `fallback` flags; no free-text success messages. The agent may only state an outcome a tool result in this run shows: pending is "waiting", never "approved"; a failure or timeout names the tool and the error, then the agent stops or asks (no silent retries, no guessed values); a fallback (e.g. an older FX rate) is named with its date. A **claim checker** in code reads the final message before anyone sees it and checks every stated outcome (approved, posted, released, paid, converted, reconciled, tests passed…) against this run's audit log; an unsupported claim blocks the message and is logged as `false_claim`. "Tests pass" needs exit code 0 from `run_tests` in the same run.
 
 ## 5. Architecture (workpaper: Architecture tab)
 
@@ -107,7 +116,7 @@ Model settings (verified against the Claude API skill, Oct 2026):
 
 System prompt: short and stable — role, goal (every entry supported by HR, terms, approvals, bank), the authority table, when to ask, honesty (say what couldn't be verified; never state a figure not from a tool). Tool guidance lives in tool descriptions, which say what each tool is for and NOT for.
 
-Tool catalog (read / compute / gated): `get_case`, `get_policy`, `get_employee_record`, `get_register_lines`, `get_comp_actions`, `get_signed_grant`, `get_equity_platform`, `get_ledger_entries`, `get_bank_transactions`, `get_document`, `search_precedents` | `match_register`, `compute_contributions`, `compute_sbc_expense`, `check_duplicate`, `reconcile_funding` | `propose_entry`, `request_funding`, `hold_case`, `reject_duplicate`, `ask_human`, `request_document`, `request_reopen`, `propose_precedent`. Approve, post, release, lock/reopen and policy edits are deliberately absent.
+Tool catalog (read / compute / gated): `get_case`, `get_policy`, `get_employee_record`, `get_register_lines`, `get_comp_actions`, `get_signed_grant`, `get_equity_platform`, `get_ledger_entries`, `get_bank_transactions`, `get_document`, `search_precedents` | `match_register`, `compute_contributions`, `compute_sbc_expense`, `check_duplicate`, `reconcile_funding`, `convert_currency`, `run_tests` | `propose_entry`, `request_funding`, `hold_case`, `reject_duplicate`, `ask_human`, `request_document`, `request_reopen`, `propose_precedent`. Approve, post, release, lock/reopen and policy edits are deliberately absent.
 
 ## 7. Controls (workpaper: Controls tab, as written there)
 
@@ -220,7 +229,7 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 10: scorer (`python -m app.eval.score --period 2026-06 --runs 3`), answer key in scoring format | `eval/scorer` |
 | Task 11: cases (state machine, questions, escalation, resume), posting service, funding with a simulated bank | `controls/cases-and-posting` |
 
-**Next: task 12 `agent/tools-and-loop`** (pull from `controls/cases-and-posting`), then 12 agent tools and loop, 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 12 `agent/tools-and-loop`** (pull from `plan/honest-claims`; includes the honest-results work of D17), then 13 extraction, 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
