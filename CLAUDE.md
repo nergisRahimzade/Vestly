@@ -232,7 +232,7 @@ True negatives (must not be flagged): Riley Nguyen, Owen Blake, Sofia Keller, Gr
 | Task 12: agent tools, loop, Claude and scripted models, claim checker, `run_tests`, `convert_currency` | `agent/tools-and-loop` |
 | Task 13: document extraction checked against the text; free-text replies confirmed by their writer | `agent/extraction-and-answers` |
 
-**Next: task 14 `agent/challenge-replay-and-approvers`** (pull from `agent/extraction-and-answers`), then 14 challenge/replay/approvers, 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
+**Next: task 14 `agent/challenge-replay-and-approvers`** (pull from `agent/extraction-and-answers`), then 15 UI, 16 data at scale, 17 held-out July and scenarios, 18 README and demo. Details in PLAN.md section 10.
 
 ## 12. Environment notes
 
