@@ -125,8 +125,9 @@ def test_june_schedules(client):
     tomas = _named(rows, "Tomas Fischer", "2026-06")
     assert (tomas["entity_code"], tomas["currency"], tomas["booking_currency"]) == ("UK", "EUR", "GBP")
     assert tomas["net_expense"] == "500.00"
-    assert tomas["fx_rate"] == "0.850980"
-    assert tomas["booked_net_expense"] == "425.49"
+    # Real rates (D20): EURUSD 1.141305 / GBPUSD 1.324995 at 30 June 2026. At the simulated rates this was 0.850980 and 425.49.
+    assert tomas["fx_rate"] == "0.861366"
+    assert tomas["booked_net_expense"] == "430.68"
     riley = _named(rows, "Riley Nguyen", "2026-06")
     assert (riley["status"], riley["net_expense"], riley["entity_code"]) == ("vesting", "750.00", "US")
     jonah = _named(rows, "Jonah Hale", "2026-06")
@@ -152,7 +153,7 @@ def test_june_drafts_a_true_up_not_a_second_booking(client):
     assert {line["department"] for line in us["lines"] if line["account_code"] == "5200"} == {"Product"}
     uk = _journal(body["journals"], "UK stock compensation true-up")
     assert _line(uk, "5200", "G&A")["credit"] == "5500.00"
-    assert _line(uk, "5200", "Engineering")["debit"] == "425.49"
+    assert _line(uk, "5200", "Engineering")["debit"] == "430.68"  # 425.49 at the simulated rates
     de = _journal(body["journals"], "DE stock compensation true-up")
     assert _line(de, "5200", "Engineering")["credit"] == "6500.00"
 
@@ -166,7 +167,7 @@ def test_june_drafts_a_true_up_not_a_second_booking(client):
     assert breakdown[("GR-US-006-DUP", "US")]["difference"] == "-500.00"
     assert breakdown[("GR-US-006-DUP", "US")]["reason"] == "platform_grant_without_signed_grant"
     assert breakdown[("GR-DE-004", "DE")]["reason"] == "expense_in_wrong_entity"
-    assert breakdown[("GR-DE-004", "UK")]["difference"] == "425.49"
+    assert breakdown[("GR-DE-004", "UK")]["difference"] == "430.68"  # 425.49 at the simulated rates
     assert ("GR-US-005", "US") not in breakdown
 
     kinds = {(note["kind"], note["legal_name"]) for note in body["notes"]}

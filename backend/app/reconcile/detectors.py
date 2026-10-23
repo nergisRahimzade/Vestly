@@ -1006,12 +1006,36 @@ def explained_mess(ctx: Context) -> list[Finding]:
 
 def fx_band(ctx: Context) -> list[Finding]:
     card = ctx.rate_card
+    if "gbp_usd_reference" not in card or "gbp_usd_reporting" not in card:
+        # The month-end rate is not published yet (or the pack gave no rate): the check waits, it does not guess.
+        return [
+            _finding(
+                ctx,
+                "fx_translation",
+                "gbp_usd_translation",
+                subject_number="GBPUSD",
+                subject_name="GBPUSD",
+                entity_code=None,
+                disposition="pending",
+                trusted_value="not yet published",
+                explanation=(
+                    f"GBPUSD translation for {ctx.period} waits for the end-of-day rate of {ctx.month.end}; "
+                    "nothing is translated at another day's rate."
+                ),
+                ranking=_ranking(ctx, "gbp_usd_translation", {}),
+                reason_code="fx_rate_pending",
+                amount=None,
+                currency=None,
+                draft_allowed=False,
+                ask=[],
+            )
+        ]
     reference = Decimal(card["gbp_usd_reference"])
     used = Decimal(card["gbp_usd_reporting"])
     gap = abs(reference - used) / reference
     inside = gap <= ctx.policy.fx_band
     claims = {
-        "reference_rate": f"{card['gbp_usd_reference']} on the {ctx.period} rate card.",
+        "reference_rate": f"{card['gbp_usd_reference']}, Open Exchange Rates end of day {card.get('rate_date')}.",
         "management_pack": f"{card['gbp_usd_reporting']} used in the management pack.",
         "ledger": "UK books stay in GBP. This gap does not rewrite a journal.",
     }

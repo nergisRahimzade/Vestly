@@ -75,8 +75,10 @@ def test_priya_conflict_and_in_band_fx(client):
     fx = _named(rows, "GBPUSD")
     assert fx["fact"] == "gbp_usd_translation"
     assert fx["disposition"] == "explained"
-    assert fx["trusted_value"] == "1.2750"
-    assert "1.2700" in fx["explanation"]
+    # Real rates (D20): Open Exchange Rates GBPUSD at 30 June 2026, and the management pack 0.4% under it.
+    # At the simulated rates these were 1.2750 and 1.2700.
+    assert fx["trusted_value"] == "1.324995"
+    assert "1.3197" in fx["explanation"]
     assert "inside the policy band" in fx["explanation"]
     # Riley the person is clean. His June payment line is part of the half-cleared batch (A08), a different subject.
     assert "NL-US-005" not in {row["subject_number"] for row in rows}

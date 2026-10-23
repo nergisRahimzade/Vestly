@@ -249,7 +249,10 @@ def test_with_the_fx_feed_down_the_fallback_rate_and_its_date_are_named(session)
 
 
 def test_a_fallback_rate_is_never_used_to_book(client):
-    """D14: with no reference rate for the month, the tool falls back for reporting, and the draft is refused."""
+    """D14: with no reference rate for the month, the tool falls back for reporting, and the draft is refused.
+
+    With real rates (D20) July 2026 has its month-end rate, so the month without one is November 2026, whose last
+    day has not come. The latest real rate held is 30 September 2026's, recorded from Open Exchange Rates."""
     from app.equity.service import draft_equity
     from app.ledger.errors import LedgerError
     from app.world.drops import build_drop
@@ -258,14 +261,14 @@ def test_a_fallback_rate_is_never_used_to_book(client):
     with SessionLocal() as db:
         controller = Actor("dana.ruiz", "controller")
         load_world(db, controller)
-        july = build_drop("2026-07", closed=False)
-        july["rate_card"] = {key: value for key, value in july["rate_card"].items() if key != "gbp_usd_reference"}
-        load_drop(db, july, controller)
-        ctx = AgentContext(db, SimpleNamespace(id=None, period="2026-07", subject_number="NL-DE-004", key="fx-check"), Actor("vestly.equity", "agent"), "run-fx-july")
+        november = build_drop("2026-11", closed=False)
+        assert "gbp_usd_reference" not in november["rate_card"]
+        load_drop(db, november, controller)
+        ctx = AgentContext(db, SimpleNamespace(id=None, period="2026-11", subject_number="NL-DE-004", key="fx-check"), Actor("vestly.equity", "agent"), "run-fx-november")
         result = execute(ctx, "convert_currency", {"amount": "500.00", "from_currency": "EUR", "to_currency": "GBP"})
-        assert result.status == "ok" and result.fallback["rate_date"] == "2026-06-30"
+        assert result.status == "ok" and result.fallback["rate_date"] == "2026-09-30"
         with pytest.raises(LedgerError) as refused:
-            draft_equity(db, "2026-07", Actor("vestly.equity", "agent"))
+            draft_equity(db, "2026-11", Actor("vestly.equity", "agent"))
         assert refused.value.code == "missing_reference_rate"
 
 

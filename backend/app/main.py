@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.agent.routes import router as agent_router
 from app.cases.routes import router as cases_router
+from app.fx.routes import router as fx_router
 from app.controls.gate import log_refusal
 from app.controls.routes import router as controls_router
 from app.db import SessionLocal, init_db
@@ -18,8 +19,31 @@ from app.record.routes import router as record_router
 from app.world.routes import router as world_router
 
 
+DAY_SECONDS = 24 * 60 * 60
+
+
+async def daily_rates() -> None:
+    """Fetch yesterday's end-of-day rate and today's latest once a day. A failure is logged, never fatal."""
+    import asyncio
+
+    from app.errors import record_error
+    from app.fx.update import update_daily
+
+    while True:
+        try:
+            with SessionLocal() as session:
+                await asyncio.to_thread(update_daily, session)
+        except Exception as exc:  # the app keeps running; the error log says where and why
+            record_error(exc, request="daily exchange-rate update")
+        await asyncio.sleep(DAY_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    import asyncio
+
+    from app.config import oxr_app_id
+
     init_db()
     from app.cases.service import resume
 
@@ -32,7 +56,12 @@ async def lifespan(_app: FastAPI):
 
         with SessionLocal() as session:
             load_world(session, Actor(handle=CONTROLLER_HANDLE, role="controller"))
+    job = None
+    if os.environ.get("VESTLY_SKIP_WORLD") != "1" and oxr_app_id():
+        job = asyncio.create_task(daily_rates())
     yield
+    if job is not None:
+        job.cancel()
 
 
 app = FastAPI(title="Vestly", version="0.1.0", lifespan=lifespan)
@@ -45,6 +74,7 @@ app.include_router(record_router)
 app.include_router(controls_router)
 app.include_router(cases_router)
 app.include_router(agent_router)
+app.include_router(fx_router)
 
 
 @app.exception_handler(LedgerError)

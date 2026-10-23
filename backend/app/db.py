@@ -56,6 +56,7 @@ def init_db(engine=None) -> None:
     from app.record import models as record_models  # noqa: F401
     from app.controls import models as controls_models  # noqa: F401
     from app.cases import models as cases_models  # noqa: F401
+    from app.fx import models as fx_models  # noqa: F401
     from app.ledger.guards import install_guards
     from app.ledger.seed import seed
 
@@ -64,6 +65,11 @@ def init_db(engine=None) -> None:
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with factory() as session:
         seed(session)
+        # The real month-end exchange rates Vestly already holds (recorded from Open Exchange Rates) are
+        # reference data like the chart of accounts: every database starts with them. The daily job adds the rest.
+        from app.fx.store import load_recorded
+
+        load_recorded(session)
         session.commit()
 
 

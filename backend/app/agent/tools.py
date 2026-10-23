@@ -543,9 +543,10 @@ class ConvertInput(ToolInput):
 
 @register(
     "convert_currency", "compute", ("payroll", "equity"), "compute",
-    """Translate an amount at the reference rate for the case month. If that rate is unavailable it falls back to
-    the latest earlier reference rate and says so in `fallback` with the rate date: report that date. A fallback
-    rate is for sizing and reporting only; nothing is ever booked at it.""",
+    """Translate an amount at the case month's reference rate: Open Exchange Rates' end-of-day rate for the
+    month's last day (pay day). If that rate is not stored it falls back to the latest earlier day and says so in
+    `fallback` with the rate date: report that date. A fallback rate is for sizing and reporting only; nothing is
+    ever booked at it.""",
     ConvertInput,
 )
 def convert_currency(ctx, args: ConvertInput) -> ToolResult:
@@ -553,35 +554,32 @@ def convert_currency(ctx, args: ConvertInput) -> ToolResult:
         amount = Decimal(args.amount)
     except InvalidOperation:
         return ToolResult.failed(f"invalid_amount: {args.amount!r} is not a number.")
-    rate, period = _rate(ctx, args.from_currency, args.to_currency, ctx.period)
+    from app.fx.store import latest_before, month_end, reference
+
+    rate, rate_date = (None, None) if ctx.period in FX_FEED_DOWN else _rate(rate_card_for(ctx.session, ctx.period) or {}, args.from_currency, args.to_currency)
     fallback = None
     if rate is None:
-        earlier = ctx.session.scalars(select(DropLoad.period).where(DropLoad.period < ctx.period).order_by(DropLoad.period.desc()))
-        for candidate in earlier:
-            rate, period = _rate(ctx, args.from_currency, args.to_currency, candidate)
-            if rate is not None:
-                reason = "the reference-rate feed is down" if ctx.period in FX_FEED_DOWN else f"no {ctx.period} reference rate"
-                fallback = {"rate": str(rate), "rate_date": month_of(period).end, "reason": reason}
-                break
+        earlier = latest_before(ctx.session, month_end(ctx.period))
+        if earlier is not None:
+            rate, rate_date = _rate(reference(earlier), args.from_currency, args.to_currency)
+            reason = "the reference-rate feed is down" if ctx.period in FX_FEED_DOWN else f"no end-of-day rate for {month_end(ctx.period)} is stored yet"
+            fallback = {"rate": str(rate), "rate_date": rate_date, "reason": reason}
     if rate is None:
-        return ToolResult.failed(f"no_reference_rate: no {args.from_currency}->{args.to_currency} reference rate for {ctx.period} or any earlier month.")
+        return ToolResult.failed(f"no_reference_rate: no {args.from_currency}->{args.to_currency} rate for {ctx.period} or any earlier day.")
     converted = (amount * rate).quantize(CENT)
     label = f"{money_str(amount)} {args.from_currency}"
     return ToolResult.ok(
-        {"amount": money_str(amount), "from": args.from_currency, "to": args.to_currency, "rate": str(rate), "rate_date": month_of(period).end, "converted": money_str(converted)},
+        {"amount": money_str(amount), "from": args.from_currency, "to": args.to_currency, "rate": str(rate), "rate_date": rate_date, "converted": money_str(converted), "source": "Open Exchange Rates"},
         establishes=[(label, "converted")],
         fallback=fallback,
     )
 
 
-def _rate(ctx, source: str, target: str, period: str) -> tuple[Decimal | None, str]:
-    if period in FX_FEED_DOWN:
-        return None, period
-    card = rate_card_for(ctx.session, period) or {}
+def _rate(card: dict, source: str, target: str) -> tuple[Decimal | None, str | None]:
     to_usd, target_usd = rate_to(card, source), rate_to(card, target)
     if to_usd is None or target_usd is None:
-        return None, period
-    return (to_usd / target_usd).quantize(Decimal("0.000001")), period
+        return None, None
+    return (to_usd / target_usd).quantize(Decimal("0.000001")), card.get("rate_date")
 
 
 @register(

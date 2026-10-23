@@ -48,7 +48,7 @@
       "id": "M04",
       "name": "gbp_usd_inside_band",
       "period": "2026-06",
-      "note": "Management pack 1.2700 versus reference 1.2750 is inside the 1% band.",
+      "note": "Management pack 1.3197 versus the real reference 1.324995 (Open Exchange Rates, 30 June 2026) is inside the 1% band.",
       "kind": "fx_translation"
     }
   ],
@@ -352,7 +352,7 @@
         "request_funding:PAY-2026-06-NL-DE-004"
       ],
       "expected_amount": null,
-      "note": "Wages and stock expense follow HR to UK Engineering as of 1 June. June stock expense is 500.00 EUR translated to 425.49 GBP at the reference rates; DE reverses its 500.00 EUR. Ask the Engineering head and the controller."
+      "note": "Wages and stock expense follow HR to UK Engineering as of 1 June. June stock expense is 500.00 EUR translated to 430.68 GBP at the real 30 June 2026 reference rates (425.49 at the earlier simulated rates); DE reverses its 500.00 EUR. Ask the Engineering head and the controller."
     },
     {
       "id": "A12",

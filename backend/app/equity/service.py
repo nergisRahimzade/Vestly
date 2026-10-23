@@ -82,7 +82,10 @@ def employee_facts(session: Session, through_period: str) -> dict[str, EmployeeF
 
 
 def rate_cards(session: Session) -> dict[str, dict]:
-    return {row.period: json.loads(row.rate_card) for row in session.scalars(select(DropLoad))}
+    """Every loaded month's rates, through the one reader that uses the real month-end rate."""
+    from app.world.loader import rate_card_for
+
+    return {row.period: rate_card_for(session, row.period) for row in session.scalars(select(DropLoad))}
 
 
 def _inputs_hash(session: Session, through_period: str) -> str:

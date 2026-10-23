@@ -130,8 +130,19 @@ def first_loaded_period(session: Session) -> str | None:
 
 
 def rate_card_for(session: Session, period: str) -> dict | None:
+    """The month's rates: contribution rates and the management pack from the drop, and the reference rates
+    from Open Exchange Rates at the month's last day (D20). Without a stored month-end rate the card has no
+    reference rates at all, so nothing can be translated or booked at a rate that is not the month's own."""
+    from app.fx.store import month_reference
+
     row = session.get(DropLoad, period)
-    return None if row is None else json.loads(row.rate_card)
+    if row is None:
+        return None
+    card = {key: value for key, value in json.loads(row.rate_card).items() if not key.endswith("_reference")}
+    real = month_reference(session, period)
+    if real is not None:
+        card.update(real)
+    return card
 
 
 def _people_count(session: Session) -> int:

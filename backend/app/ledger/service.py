@@ -88,6 +88,15 @@ def lock_period(session: Session, entity_code: str, period: str, actor: Actor) -
         raise LedgerError("period_not_open", f"Open {entity.code} {period} before locking it.", 404)
     if row.status == "locked":
         return row
+    from app.fx.store import day_rate, month_end
+
+    # Salaries are paid at month end, so a month closes at its last day's rate; until that rate is stored, it stays open.
+    if day_rate(session, month_end(period)) is None:
+        raise LedgerError(
+            "rate_missing",
+            f"{entity.code} {period} cannot be locked: no end-of-day exchange rate for {month_end(period)} is stored yet.",
+            409,
+        )
     reopened = row.status == "reopened"
     row.status = "locked"
     row.locked_by = actor.handle

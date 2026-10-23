@@ -36,10 +36,36 @@ RATE_CARD = {
     "uk_pension_rate": "0.05",
     "de_social_rate": "0.20",
     "fx_band": "0.01",
-    "gbp_usd_reference": "1.2750",
-    "gbp_usd_reporting": "1.2700",
-    "eur_usd_reference": "1.0850",
 }
+# Real month-end rates from Open Exchange Rates, recorded once (D20). The management pack, the rate
+# Northlight's old process used, sits 0.4% under the reference: inside the 1% band, so explained.
+FX_RECORDED = Path(__file__).resolve().parents[2] / "fixtures" / "fx"
+MANAGEMENT_PACK_FACTOR = Decimal("0.996")
+
+
+def platform_rates(period: str) -> dict[str, Decimal]:
+    """USD per unit as the simulated equity platform translates: the month-end rate, or the latest it had before.
+    The platform's choice, not Vestly's; Vestly books only at the month's own rate."""
+    end = month_of(period).end
+    candidates = sorted(path for path in FX_RECORDED.glob("*.json") if path.stem <= end)
+    if not candidates:
+        raise ValueError(f"No recorded exchange rate on or before {end}.")
+    rates = json.loads(candidates[-1].read_text(encoding="utf-8"))["rates"]
+    return {"USD": Decimal("1"), **{code: (Decimal(1) / Decimal(str(rates[code]))).quantize(Decimal("0.000001")) for code in ("GBP", "EUR")}}
+
+
+def rate_card(period: str) -> dict:
+    """The drop's rate card for a month: contribution rates, and the month-end rates if that day's rate exists."""
+    card = dict(RATE_CARD)
+    path = FX_RECORDED / f"{month_of(period).end}.json"
+    if path.exists():
+        rates = json.loads(path.read_text(encoding="utf-8"))["rates"]
+        gbp = (Decimal(1) / Decimal(str(rates["GBP"]))).quantize(Decimal("0.000001"))
+        eur = (Decimal(1) / Decimal(str(rates["EUR"]))).quantize(Decimal("0.000001"))
+        card["gbp_usd_reference"] = str(gbp)
+        card["eur_usd_reference"] = str(eur)
+        card["gbp_usd_reporting"] = str((gbp * MANAGEMENT_PACK_FACTOR).quantize(Decimal("0.0001")))
+    return card
 ENTITY_RATES = {
     "US": {"withholding": Decimal("0.20"), "employer_tax": Decimal("0.08"), "contribution": Decimal("0.04")},
     "UK": {"withholding": Decimal("0.20"), "employer_tax": Decimal("0.10"), "contribution": Decimal("0.05")},
@@ -429,9 +455,7 @@ def equity_row(person: dict, month: Month) -> dict:
     grant_currency = CURRENCIES[person["entity_code"]]
     if currency != grant_currency:
         # After a transfer the platform books in the new entity's currency, at the reference rates.
-        to_usd = {"USD": Decimal("1")}
-        to_usd["GBP"] = Decimal(RATE_CARD["gbp_usd_reference"])
-        to_usd["EUR"] = Decimal(RATE_CARD["eur_usd_reference"])
+        to_usd = platform_rates(month.period)
         rate = (to_usd[grant_currency] / to_usd[currency]).quantize(Decimal("0.000001"))
         expense = (expense * rate).quantize(CENT)
     return {
@@ -900,8 +924,7 @@ def rate_card_body() -> str:
             "UK employer pension: 5% of gross wages.",
             "Germany employer social contributions: 20% of gross wages.",
             "A GBP to USD rate within 1% of the reference rate is an explained difference.",
-            f"Reference GBPUSD {RATE_CARD['gbp_usd_reference']}. Management pack used {RATE_CARD['gbp_usd_reporting']}.",
-            f"Reference EURUSD {RATE_CARD['eur_usd_reference']}.",
+            "Reference rates: Open Exchange Rates, end of day on the month's last day (pay day).",
             "",
         ]
     )
@@ -976,7 +999,7 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         "received_on": month.received_on,
         "close_period": closed,
         "plants": [plant.name for plant in plants],
-        "rate_card": dict(RATE_CARD),
+        "rate_card": rate_card(period),
         "hr": drop.hr,
         "payroll": drop.payroll,
         "funding": funding,
