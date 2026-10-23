@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.identities import Actor
+from app.equity.models import EquityGrantMonth
+from app.equity.service import grant_month, rebuild_schedules
 from app.ledger.errors import LedgerError
 from app.ledger.money import money_str
 from app.ledger.service import parse_period
@@ -33,6 +35,7 @@ def reconcile_period(session: Session, period: str, actor: Actor) -> tuple[Recon
     if not drop_path.exists():
         raise LedgerError("period_not_loaded", f"No file drop is loaded for {period}.", 404)
     policy = load_policy()
+    rebuild_schedules(session, period)
     run = _start_run(session, period, actor, policy)
     findings = _employment_findings(session, period, policy) + [_fx_finding(period, policy)]
     for finding in findings:
@@ -100,22 +103,13 @@ def _employment_findings(session: Session, period: str, policy: Policy) -> list[
                 EquitySnapshot.employee_number == hr.employee_number,
             )
         )
+        subledger = grant_month(session, period, hr.employee_number)
         ledger_line = _stock_expense_line(session, period, hr.entity_code, hr.department)
-        peer_count = len(
-            list(
-                session.scalars(
-                    select(EquitySnapshot).where(
-                        EquitySnapshot.period == period,
-                        EquitySnapshot.entity_code == hr.entity_code,
-                        EquitySnapshot.department == hr.department,
-                    )
-                )
-            )
-        )
+        department_net = _department_subledger(session, period, hr.entity_code, hr.department)
         latest = max(payroll_rows, key=lambda row: row.pay_period_end) if payroll_rows else None
         payroll_disagrees = latest is not None and latest.pay_period_end > hr.termination_date
-        equity_disagrees = equity is not None and equity.platform_status == "vesting" and equity.monthly_expense > 0
-        ledger_disagrees = ledger_line is not None and ledger_line.debit > 0
+        equity_disagrees = _equity_disagrees(equity, subledger)
+        ledger_disagrees = _ledger_disagrees(ledger_line, department_net)
         if not (payroll_disagrees or equity_disagrees or ledger_disagrees):
             continue
         claims = {
@@ -124,8 +118,8 @@ def _employment_findings(session: Session, period: str, policy: Policy) -> list[
                 f"recorded {hr.termination_recorded_on}."
             ),
             "payroll": _payroll_claim(latest),
-            "equity": _equity_claim(equity),
-            "ledger": _ledger_claim(hr.legal_name, hr.entity_code, hr.department, ledger_line, peer_count),
+            "equity": _equity_claim(equity, subledger),
+            "ledger": _ledger_claim(hr.entity_code, hr.department, ledger_line, department_net, subledger),
         }
         ranking = [
             {"rank": index, "source": source.source, "reason": source.reason, "claim": claims[source.source]}
@@ -216,31 +210,67 @@ def _payroll_claim(latest: PayrollRegisterRow | None) -> str:
     )
 
 
-def _equity_claim(equity: EquitySnapshot | None) -> str:
+def _department_subledger(session: Session, period: str, entity_code: str, department: str) -> Decimal:
+    rows = session.scalars(
+        select(EquityGrantMonth).where(
+            EquityGrantMonth.period == period,
+            EquityGrantMonth.entity_code == entity_code,
+            EquityGrantMonth.department == department,
+        )
+    )
+    return sum((row.net_expense for row in rows), Decimal("0.00"))
+
+
+def _equity_disagrees(equity: EquitySnapshot | None, subledger: EquityGrantMonth | None) -> bool:
+    if equity is not None and equity.platform_status == "vesting" and equity.monthly_expense > 0:
+        return True
+    if equity is not None and subledger is not None and equity.monthly_expense != subledger.net_expense:
+        return True
+    return False
+
+
+def _ledger_disagrees(line: LedgerExportLine | None, department_net: Decimal) -> bool:
+    booked = Decimal("0.00") if line is None else line.debit
+    return booked != department_net
+
+
+def _equity_claim(equity: EquitySnapshot | None, subledger: EquityGrantMonth | None) -> str:
     if equity is None:
-        return "No equity snapshot for this person in the period."
+        platform = "No equity snapshot for this person in the period."
+    else:
+        platform = (
+            f"Grant {equity.grant_number} platform_status {equity.platform_status}, "
+            f"monthly_expense {money_str(equity.monthly_expense)} {equity.currency}."
+        )
+    if subledger is None:
+        return platform
     return (
-        f"Grant {equity.grant_number} platform_status {equity.platform_status}, "
-        f"monthly_expense {money_str(equity.monthly_expense)} {equity.currency}."
+        f"{platform} Subledger {subledger.grant_number} status {subledger.status}, "
+        f"net_expense {money_str(subledger.net_expense)} {subledger.currency}."
     )
 
 
 def _ledger_claim(
-    name: str,
     entity_code: str,
     department: str,
     line: LedgerExportLine | None,
-    peer_count: int,
+    department_net: Decimal,
+    subledger: EquityGrantMonth | None,
 ) -> str:
     if line is None or line.debit == 0:
-        return f"No stock-compensation debit for {entity_code} {department} in this period."
-    only = ""
-    if peer_count == 1:
-        only = f" {name} is the only {entity_code} {department} grant."
-    return (
-        f"Account 5200 debit {money_str(line.debit)} {line.currency} for {department} "
-        f"on '{line.entry_memo}'.{only}"
-    )
+        booked = f"No stock-compensation debit for {entity_code} {department} in this period."
+    else:
+        booked = (
+            f"Account 5200 debit {money_str(line.debit)} {line.currency} for {department} "
+            f"on '{line.entry_memo}'."
+        )
+    grant = ""
+    if subledger is not None:
+        grant = (
+            f" Grant {subledger.grant_number} subledger net "
+            f"{money_str(subledger.net_expense)} {subledger.currency}."
+        )
+    return f"{booked} Subledger {entity_code} {department} totals {money_str(department_net)}.{grant}"
 
 
 def _percent(rate: Decimal) -> str:

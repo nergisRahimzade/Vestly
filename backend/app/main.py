@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.db import SessionLocal, init_db
 from app.ledger.errors import LedgerError
 from app.ledger.routes import router
+from app.equity.routes import router as equity_router
 from app.payroll.routes import router as payroll_router
 from app.reconcile.routes import router as reconcile_router
 from app.world.routes import router as world_router
@@ -29,6 +30,7 @@ app.include_router(router)
 app.include_router(world_router)
 app.include_router(reconcile_router)
 app.include_router(payroll_router)
+app.include_router(equity_router)
 
 
 @app.exception_handler(LedgerError)
