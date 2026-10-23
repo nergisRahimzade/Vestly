@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ from app.ledger.errors import LedgerError
 from app.ledger.service import import_posted_entry, lock_period, open_period, parse_period
 from app.record.evidence import document_basis, record
 from app.record.precedents import seed_march_ruling
-from app.world.drops import MONTHS, fixture_dir
+from app.world.drops import COMPANY_CLOCK_START, MONTHS, build_company_drop, company_periods, fixture_dir
 from app.world.evidence import load_static_evidence
 from app.world.models import (
     BankLine,
@@ -31,16 +32,51 @@ from app.world.models import (
 )
 
 WORLD_VERSION = "2026-06"
+# The cast world: 15 people, January to June 2026, June open. The unit tests' fixed scenario.
+# The company world: about 300 people, January 2022 to October 2026, October open, aligned with today (D21, D22).
+WORLDS = ("cast", "company")
+COMPANY_VERSION = "2026-10"
+# A loaded world, kept per process so the next fresh database restores it instead of loading 58 months again.
+_SNAPSHOTS: dict[str, object] = {}
 ENTITIES = tuple(code for code, _name, _currency in ENTITY_ROWS)
 CURRENCY = {code: currency for code, _name, currency in ENTITY_ROWS}
 DROP_SECTIONS = ("period", "received_on", "close_period", "rate_card", "hr", "payroll", "funding", "equity", "bank")
 
 
-def load_world(session: Session, actor: Actor) -> dict:
-    """Load the months the test world ships with, oldest first. The actor must be allowed to post and lock."""
-    if session.get(WorldLoad, WORLD_VERSION) is not None:
-        return {"status": "already_loaded", "people": _people_count(session)}
-    static = load_static_evidence(session)
+def selected_world() -> str:
+    world = os.environ.get("VESTLY_WORLD", "company")
+    if world not in WORLDS:
+        raise LedgerError("unknown_world", f"VESTLY_WORLD must be one of {', '.join(WORLDS)}, not {world!r}.", 500)
+    return world
+
+
+def load_world(session: Session, actor: Actor, world: str | None = None) -> dict:
+    """Load a world's months, oldest first. The actor must be allowed to post and lock.
+
+    The first load in a process is done month by month; a later load into a fresh database restores
+    that result, which is the same database a full load would produce.
+    """
+    require(actor, WORLD_LOAD, "load the world")
+    world = world or selected_world()
+    if world not in WORLDS:
+        raise LedgerError("unknown_world", f"No world named {world!r}.", 422)
+    existing = session.scalar(select(WorldLoad).limit(1))
+    if existing is not None:
+        return {"status": "already_loaded", "world": existing.version.split(":")[0], "people": _people_count(session)}
+    fresh = _is_fresh(session)
+    if fresh and world in _SNAPSHOTS and _restore(session, world):
+        return {"status": "loaded", "world": world, "people": _people_count(session), "restored": True}
+    if world == "company":
+        result = _load_company(session, actor)
+    else:
+        result = _load_cast(session, actor)
+    if fresh:
+        _snapshot(session, world)
+    return result
+
+
+def _load_cast(session: Session, actor: Actor) -> dict:
+    static = load_static_evidence(session, "cast")
     session.flush()
     record(
         session,
@@ -56,9 +92,82 @@ def load_world(session: Session, actor: Actor) -> dict:
         with doing("loading the shipped world", period=period):
             load_drop(session, read_drop_file(period), actor)
     seed_march_ruling(session, actor)
-    session.add(WorldLoad(version=WORLD_VERSION, loaded_at=datetime.now(timezone.utc)))
+    session.add(WorldLoad(version=f"cast:{WORLD_VERSION}", loaded_at=datetime.now(timezone.utc)))
     session.commit()
-    return {"status": "loaded", "people": _people_count(session)}
+    return {"status": "loaded", "world": "cast", "people": _people_count(session)}
+
+
+def _load_company(session: Session, actor: Actor) -> dict:
+    """The whole company: 58 monthly drops built from the generator, then the clock set to October's close day."""
+    from app.controls.models import SimClock
+
+    with doing("loading the company's signed grants and compensation actions"):
+        static = load_static_evidence(session, "company")
+        session.flush()
+    record(
+        session,
+        actor.handle,
+        "documents_received",
+        "documents",
+        "static",
+        payload={"count": len(static), "world": "company"},
+        basis=[document_basis(row.content_hash, row.title) for row in static[:50]],
+    )
+    session.commit()
+    for period in company_periods():
+        with doing("loading the company world", period=period):
+            load_drop(session, build_company_drop(period), actor)
+    seed_march_ruling(session, actor)
+    clock = session.get(SimClock, 1)
+    if clock is None:
+        session.add(SimClock(id=1, today=COMPANY_CLOCK_START))
+    else:
+        clock.today = COMPANY_CLOCK_START
+    session.add(WorldLoad(version=f"company:{COMPANY_VERSION}", loaded_at=datetime.now(timezone.utc)))
+    session.commit()
+    return {"status": "loaded", "world": "company", "people": _people_count(session)}
+
+
+def _is_fresh(session: Session) -> bool:
+    from app.record.models import EvidenceEvent
+
+    return (
+        session.scalar(select(func.count()).select_from(DropLoad)) == 0
+        and session.scalar(select(func.count()).select_from(EvidenceEvent)) == 0
+    )
+
+
+def _snapshot(session: Session, world: str) -> None:
+    """Keep a copy of the freshly loaded database (SQLite only) for the next fresh load in this process."""
+    import sqlite3
+
+    engine = session.get_bind()
+    if engine.dialect.name != "sqlite":
+        return
+    session.commit()
+    copy = sqlite3.connect(":memory:", check_same_thread=False)
+    raw = engine.raw_connection()
+    try:
+        with doing("snapshotting the loaded world", world=world):
+            raw.driver_connection.backup(copy)
+    finally:
+        raw.close()
+    _SNAPSHOTS[world] = copy
+
+
+def _restore(session: Session, world: str) -> bool:
+    engine = session.get_bind()
+    if engine.dialect.name != "sqlite":
+        return False
+    session.commit()
+    raw = engine.raw_connection()
+    try:
+        with doing("restoring the loaded world", world=world):
+            _SNAPSHOTS[world].backup(raw.driver_connection)
+    finally:
+        raw.close()
+    session.expire_all()
+    return True
 
 
 def read_drop_file(period: str) -> dict:

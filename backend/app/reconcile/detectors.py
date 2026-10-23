@@ -361,9 +361,9 @@ def employment_dates(ctx: Context) -> list[Finding]:
             (equity.platform_status == "vesting" and equity.monthly_expense > 0)
             or (subledger is not None and equity.monthly_expense != subledger.booked_net_expense)
         )
-        booked = ZERO if ledger_line is None else ledger_line.debit
-        ledger_disagrees = booked != department_net
-        if not (payroll_disagrees or equity_disagrees or ledger_disagrees):
+        # The ledger's department total is evidence, not a trigger: at company scale one department holds many
+        # people, so a department gap cannot be pinned on this leaver. Their own pay and grant can.
+        if not (payroll_disagrees or equity_disagrees):
             continue
         claims = {
             "hr": f"status {hr.status}, termination_date {hr.termination_date}, recorded {hr.termination_recorded_on}.",
@@ -545,8 +545,8 @@ def closed_period_effect(ctx: Context) -> list[Finding]:
                 entity_code=row.entity_code,
                 trusted_value=action["monthly_rate"] if action else "not authorized",
                 explanation=(
-                    f"{row.legal_name}'s June pay includes {money_str(row.retro_gross)} {row.currency} for "
-                    f"{', '.join(months)}, which are locked. The lump is held out of the June draft until the "
+                    f"{row.legal_name}'s {ctx.month.label} pay includes {money_str(row.retro_gross)} {row.currency} for "
+                    f"{', '.join(months)}, which are locked. The lump is held out of the {ctx.month.label} draft until the "
                     f"controller approves the catch-up; the month stays locked. "
                     + (f"{entered_by} keyed the change and cannot approve this run (SOD-2)." if entered_by else "")
                 ),

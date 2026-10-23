@@ -1,0 +1,603 @@
+{
+  "world": "company",
+  "first": "2022-01",
+  "open": "2026-10",
+  "people": 307,
+  "months": {
+    "2022-01": {
+      "sha256": "a1e24e3eafa6e09a69b7788ca10d58e17307db18cc887de4a56d3fffb6b5764a",
+      "closed": true,
+      "hr": 160,
+      "payroll": 153,
+      "equity": 123,
+      "plants": []
+    },
+    "2022-02": {
+      "sha256": "3f7c87caab533eb61f4efec70e343b168c04d0ae126b40aaf45a21ad1ad9a582",
+      "closed": true,
+      "hr": 165,
+      "payroll": 158,
+      "equity": 127,
+      "plants": []
+    },
+    "2022-03": {
+      "sha256": "f4e654e77f7e52e12ef8ce25f43e8ee2da7340de78fd173ed8b108498124586f",
+      "closed": true,
+      "hr": 169,
+      "payroll": 162,
+      "equity": 132,
+      "plants": []
+    },
+    "2022-04": {
+      "sha256": "970fd7d70983f89adc61d8d2be0574217230b8b52f1fd1897551bacf17c66e90",
+      "closed": true,
+      "hr": 173,
+      "payroll": 166,
+      "equity": 135,
+      "plants": []
+    },
+    "2022-05": {
+      "sha256": "802fcc7365df69c9e8c49bb2be9ecf82e7046aa8606682c1034ff81850adf992",
+      "closed": true,
+      "hr": 177,
+      "payroll": 169,
+      "equity": 138,
+      "plants": []
+    },
+    "2022-06": {
+      "sha256": "25c503824a6b6a7d3b6dd005bb7b16c34d373c9ba9ce24e3b6425a8170011ec7",
+      "closed": true,
+      "hr": 181,
+      "payroll": 173,
+      "equity": 142,
+      "plants": []
+    },
+    "2022-07": {
+      "sha256": "d6314174b3add75084e63019a6c8aa8a0328d295f0eabcc02978688b5ad914cd",
+      "closed": true,
+      "hr": 185,
+      "payroll": 177,
+      "equity": 144,
+      "plants": []
+    },
+    "2022-08": {
+      "sha256": "479c8fc170faaf5b01611a45ce993bdcab5e5af8df5d0b5ff9bce4a9b99a2ceb",
+      "closed": true,
+      "hr": 187,
+      "payroll": 179,
+      "equity": 146,
+      "plants": []
+    },
+    "2022-09": {
+      "sha256": "88a0878c616b951017a702d1956a356c15735427a07044546c1db129f8fc6f1b",
+      "closed": true,
+      "hr": 190,
+      "payroll": 182,
+      "equity": 147,
+      "plants": []
+    },
+    "2022-10": {
+      "sha256": "8a9c19688e07a318855ca7c5a3a3786ed5f26a696e8132aeb43caedc7ef7787b",
+      "closed": true,
+      "hr": 195,
+      "payroll": 187,
+      "equity": 152,
+      "plants": []
+    },
+    "2022-11": {
+      "sha256": "a939cb203f752ff30c235e196a92942eb139428cb8e17fbdcca9a7d6b2b27b4b",
+      "closed": true,
+      "hr": 197,
+      "payroll": 189,
+      "equity": 154,
+      "plants": []
+    },
+    "2022-12": {
+      "sha256": "8ab0c384c33a5cc2b1d2e2db292acb1c31851b8707518942cce108877f6809dc",
+      "closed": true,
+      "hr": 200,
+      "payroll": 192,
+      "equity": 157,
+      "plants": []
+    },
+    "2023-01": {
+      "sha256": "84661247a306854bf0ab5371e745dfbb11d774d544ccbff6654f538d9b8bc9f3",
+      "closed": true,
+      "hr": 205,
+      "payroll": 197,
+      "equity": 160,
+      "plants": []
+    },
+    "2023-02": {
+      "sha256": "a896ef78e4393e825be4d448425933a3837e05fbbbeee7bab0d882ba8c8c1a1c",
+      "closed": true,
+      "hr": 209,
+      "payroll": 201,
+      "equity": 162,
+      "plants": []
+    },
+    "2023-03": {
+      "sha256": "6b7664dd07da1d6536082e07f9e005e88a88a8f033d443588a2570d2e5951e6e",
+      "closed": true,
+      "hr": 214,
+      "payroll": 205,
+      "equity": 166,
+      "plants": []
+    },
+    "2023-04": {
+      "sha256": "2f25d3697947da02d3362a32a014e5c143bf5147477df7fb02520686189af447",
+      "closed": true,
+      "hr": 219,
+      "payroll": 210,
+      "equity": 171,
+      "plants": []
+    },
+    "2023-05": {
+      "sha256": "6728f37e36ca088addba49d86e34b5cb7f94d7fba7d0e36ae0231b4bd35263fa",
+      "closed": true,
+      "hr": 223,
+      "payroll": 214,
+      "equity": 174,
+      "plants": []
+    },
+    "2023-06": {
+      "sha256": "7d224d02057c52980cc226aacda5d1a974122c5799c887d873976ce9b356753c",
+      "closed": true,
+      "hr": 226,
+      "payroll": 215,
+      "equity": 176,
+      "plants": []
+    },
+    "2023-07": {
+      "sha256": "c9e4809b66fe193778700bdda8667a3d02eba73c3084d53420ff6664eddf1747",
+      "closed": true,
+      "hr": 228,
+      "payroll": 217,
+      "equity": 178,
+      "plants": []
+    },
+    "2023-08": {
+      "sha256": "f9dc1126073ec18ddb516f53a1b196865665dd998e77df7ebcc754eeb2c9b008",
+      "closed": true,
+      "hr": 229,
+      "payroll": 217,
+      "equity": 178,
+      "plants": []
+    },
+    "2023-09": {
+      "sha256": "cff475e28117497e2a9ca5f5752a1d9cb12eb7288e27060b6c9247b3e6dfde64",
+      "closed": true,
+      "hr": 232,
+      "payroll": 219,
+      "equity": 181,
+      "plants": []
+    },
+    "2023-10": {
+      "sha256": "ebd5550eb17e26990d512bf484f0b915244eb3653e966371bc611b3cb301a155",
+      "closed": true,
+      "hr": 234,
+      "payroll": 220,
+      "equity": 181,
+      "plants": []
+    },
+    "2023-11": {
+      "sha256": "f4a582fe52905744506eefef70491ee75f66aca84638b0bfa8b358002e0d9268",
+      "closed": true,
+      "hr": 237,
+      "payroll": 223,
+      "equity": 183,
+      "plants": []
+    },
+    "2023-12": {
+      "sha256": "cb836b4e587aea708c8a451b5bdfe93f13ed4baaf57ed0576c0b26c134dbd735",
+      "closed": true,
+      "hr": 244,
+      "payroll": 228,
+      "equity": 188,
+      "plants": []
+    },
+    "2024-01": {
+      "sha256": "531dde9205b09c5c8804e4dcff1e8d662377d05bdc9fbf9e94a946c25ad1b6a1",
+      "closed": true,
+      "hr": 248,
+      "payroll": 232,
+      "equity": 191,
+      "plants": []
+    },
+    "2024-02": {
+      "sha256": "4a4be8ca4edf4bc09560b82d8784baac3849ec13d3b466322049c14bf820234d",
+      "closed": true,
+      "hr": 251,
+      "payroll": 235,
+      "equity": 193,
+      "plants": []
+    },
+    "2024-03": {
+      "sha256": "95dfd02bce3525ef25a76c5f255ddacebecbe69e0cdc07f8545950e0bcdd3f96",
+      "closed": true,
+      "hr": 254,
+      "payroll": 238,
+      "equity": 203,
+      "plants": [
+        "unapproved_grant:GR-DE-001"
+      ]
+    },
+    "2024-04": {
+      "sha256": "db4bb473dde1acca9d3d8e723963697fa529e400147d284774e0eee476ef6d96",
+      "closed": true,
+      "hr": 257,
+      "payroll": 241,
+      "equity": 204,
+      "plants": [
+        "unapproved_grant:GR-DE-001"
+      ]
+    },
+    "2024-05": {
+      "sha256": "b48b0477834c9c732422cac08312e1bf855a71991cf4a1dc36d88aebe1a9cef7",
+      "closed": true,
+      "hr": 259,
+      "payroll": 243,
+      "equity": 206,
+      "plants": [
+        "unapproved_grant:GR-DE-001"
+      ]
+    },
+    "2024-06": {
+      "sha256": "42d7194fd64165ee5e3c20c0c36c7cfee6b88370982c9ea1d31b79d30a25c85a",
+      "closed": true,
+      "hr": 263,
+      "payroll": 245,
+      "equity": 209,
+      "plants": [
+        "unapproved_grant:GR-DE-001"
+      ]
+    },
+    "2024-07": {
+      "sha256": "4f6be0c74e82f35dab6574f2a999dc802a3de07368c765d4de62959863767b07",
+      "closed": true,
+      "hr": 263,
+      "payroll": 243,
+      "equity": 209,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2024-08": {
+      "sha256": "057d0f8939297aff3b2f6b542a9df66344d79bfe4d5e0dc27771a5e4bb36e6a4",
+      "closed": true,
+      "hr": 268,
+      "payroll": 248,
+      "equity": 214,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2024-09": {
+      "sha256": "bebfa4cf483a23ff37d590709155bf0b842f65eea72df3c9394905b0b460b09a",
+      "closed": true,
+      "hr": 272,
+      "payroll": 252,
+      "equity": 217,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2024-10": {
+      "sha256": "130cb12107d573da627723099dfe0af017db30941434692fcee934ea3c91a5a7",
+      "closed": true,
+      "hr": 273,
+      "payroll": 253,
+      "equity": 218,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2024-11": {
+      "sha256": "3395e9b57b801630e484a24ed6454e6b3aba6635c42771c00919a9485070b191",
+      "closed": true,
+      "hr": 280,
+      "payroll": 260,
+      "equity": 224,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2024-12": {
+      "sha256": "e84dc7f6354fba627d2ecec5be62a0873625ad7bd07a592fc0a361a6a721872d",
+      "closed": true,
+      "hr": 281,
+      "payroll": 261,
+      "equity": 225,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-01": {
+      "sha256": "b400aa69f7b3215b0b18918bf138147c79f62eea39a802050189a188b5e99c75",
+      "closed": true,
+      "hr": 284,
+      "payroll": 264,
+      "equity": 228,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-02": {
+      "sha256": "f087c93f44c24c6e42661364b30c35f38c41b329befda8ba7246fa31b0502a9b",
+      "closed": true,
+      "hr": 285,
+      "payroll": 265,
+      "equity": 229,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-03": {
+      "sha256": "26d5918bd4eda8c2326e05fcad5cd00a598422324cabcac6760f98a9a67c412c",
+      "closed": true,
+      "hr": 287,
+      "payroll": 267,
+      "equity": 231,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-04": {
+      "sha256": "e6a3848c70962a44bbb11df7e21ff0a5f3fa8fffe310d4340f6f34fb86e60bf6",
+      "closed": true,
+      "hr": 287,
+      "payroll": 266,
+      "equity": 231,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-05": {
+      "sha256": "b38ec1d40655eb558676875a7dc48b271789c7124575abd86423240d9f3fc7c5",
+      "closed": true,
+      "hr": 290,
+      "payroll": 269,
+      "equity": 233,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-06": {
+      "sha256": "4f3d6d41c23d6c815f0efb1e7f54fab92ff485077a24cf208d0488739439fae8",
+      "closed": true,
+      "hr": 290,
+      "payroll": 269,
+      "equity": 233,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-07": {
+      "sha256": "4194bdbfb98f93eee1b34525b5272331b65d6dfcf60682f0770d5cf76d788109",
+      "closed": true,
+      "hr": 291,
+      "payroll": 269,
+      "equity": 234,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-08": {
+      "sha256": "627f7577999be3dd39eec3f01f29617bd972e3fa33e73eb4aecde140af1de76e",
+      "closed": true,
+      "hr": 295,
+      "payroll": 271,
+      "equity": 238,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-09": {
+      "sha256": "dc7302952b6d974f210948b600bb1fb76bcd56cb2ca4790b29dd81c2f9423a78",
+      "closed": true,
+      "hr": 297,
+      "payroll": 272,
+      "equity": 240,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-10": {
+      "sha256": "1fcbcb9f1df567923043ce9567e11e804fc4c62d1efe37b5315eb77674ab4546",
+      "closed": true,
+      "hr": 298,
+      "payroll": 273,
+      "equity": 241,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-11": {
+      "sha256": "8eeb9dfda525865ac1cc86cc3944e055e208a7ad0271d035483db7b19e050eaa",
+      "closed": true,
+      "hr": 300,
+      "payroll": 271,
+      "equity": 243,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2025-12": {
+      "sha256": "b56ad22bf8a01311ecc28beff6ceb78d9317aaa3634c8afdbe71ef67c3d832f3",
+      "closed": true,
+      "hr": 300,
+      "payroll": 270,
+      "equity": 243,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "stale_vesting_flag:GR-US-241"
+      ]
+    },
+    "2026-01": {
+      "sha256": "0edecdc207d179683d3fac89ea4ad6cde8875dab5d4f8a92fca218c56db20c49",
+      "closed": true,
+      "hr": 300,
+      "payroll": 268,
+      "equity": 243,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-241"
+      ]
+    },
+    "2026-02": {
+      "sha256": "40219c8aa668296922e5709516ed6cf9a62f204658f28604eea21ac00daaa46b",
+      "closed": true,
+      "hr": 300,
+      "payroll": 264,
+      "equity": 243,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-241"
+      ]
+    },
+    "2026-03": {
+      "sha256": "9a260cbc4abb7eda4c92ddd89fa5bc69734fc9c212cbae3ac146436f4db4c27e",
+      "closed": true,
+      "hr": 301,
+      "payroll": 264,
+      "equity": 244,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003",
+        "paid_past_termination:NL-US-003",
+        "email:Jonah Hale bank change email",
+        "email:Controller rejection of Jonah Hale bank change"
+      ]
+    },
+    "2026-04": {
+      "sha256": "a44f9e59638c907e75877084070b3ad882eb0ad7a17d1231df543f3a50899c99",
+      "closed": true,
+      "hr": 301,
+      "payroll": 262,
+      "equity": 244,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003"
+      ]
+    },
+    "2026-05": {
+      "sha256": "70fa1303657e723dae8091d4ae60c1afd75b336878062c13bc4607a79386d16c",
+      "closed": true,
+      "hr": 301,
+      "payroll": 262,
+      "equity": 244,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003"
+      ]
+    },
+    "2026-06": {
+      "sha256": "d819452699ecd8a6feeb0fbaf4b0e460630be60f2d3988eaf93e7acb0e1bb50f",
+      "closed": true,
+      "hr": 301,
+      "payroll": 261,
+      "equity": 244,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003"
+      ]
+    },
+    "2026-07": {
+      "sha256": "5e4e55fa1840f3aacf4d9877a5c03149a656c300824baed9967aa601e8a276c9",
+      "closed": true,
+      "hr": 303,
+      "payroll": 261,
+      "equity": 246,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003",
+        "returning_leaver_paid:NL-US-242",
+        "contribution_rate_break:NL-UK-186"
+      ]
+    },
+    "2026-08": {
+      "sha256": "8e86cab368b7fbb1339aafe1623d0f9f5a7906762edd3887df1367547aae313f",
+      "closed": true,
+      "hr": 305,
+      "payroll": 262,
+      "equity": 246,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003",
+        "duplicate_payment:PAY-2026-08-NL-DE-161"
+      ]
+    },
+    "2026-09": {
+      "sha256": "514cd56e2d45850aca50b09f231fe94dda537f52b8868c63c93db589a6eb774d",
+      "closed": true,
+      "hr": 306,
+      "payroll": 261,
+      "equity": 246,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003",
+        "department_miscoded:NL-US-245",
+        "dropped_from_register:NL-US-246"
+      ]
+    },
+    "2026-10": {
+      "sha256": "9759503bb8208ea14cac7f5f1f5cbece03600f3897160f37b7f785f8473b9f7f",
+      "closed": false,
+      "hr": 308,
+      "payroll": 264,
+      "equity": 247,
+      "plants": [
+        "unapproved_grant:GR-DE-001",
+        "contribution_rate_break:NL-UK-001",
+        "vesting_typo:GR-US-002",
+        "stale_vesting_flag:GR-UK-003,GR-US-003",
+        "department_miscoded:NL-US-245",
+        "ghost_on_register:PAY-0099",
+        "duplicate_grant:GR-US-006",
+        "stale_home_entity:NL-DE-004",
+        "duplicate_hr_row:NL-DE-003",
+        "email:Maya Chen bank change email",
+        "diverted_funding:NL-US-001",
+        "uncleared_funding:PAY-2026-10-NL-US-002,PAY-2026-10-NL-US-005",
+        "late_bank_posting:PAY-2026-10-NL-DE-002",
+        "uncleared_funding:PAY-2026-10-NL-DE-001",
+        "funding_booked_in_full:DE"
+      ]
+    }
+  }
+}

@@ -12,7 +12,7 @@ from app.db import get_db
 from app.ledger.money import money_str
 from app.policy.loader import load_policy
 from app.world.access import individual_scope, log_access
-from app.world.loader import WORLD_VERSION, load_drop, load_world
+from app.world.loader import load_drop, load_world
 from app.world.models import (
     BankLine,
     Department,
@@ -80,16 +80,24 @@ def departments(db: Session = Depends(get_db)) -> list[dict]:
 
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)) -> dict:
-    loaded = db.get(WorldLoad, WORLD_VERSION) is not None
+    world = db.scalar(select(WorldLoad).limit(1))
     people = int(db.scalar(select(func.count()).select_from(Person)) or 0)
     documents = int(db.scalar(select(func.count()).select_from(SourceDocument)) or 0)
-    return {"company": "Northlight Labs", "loaded": loaded, "people": people, "documents": documents}
+    return {
+        "company": "Northlight Labs",
+        "loaded": world is not None,
+        "world": None if world is None else world.version.split(":")[0],
+        "people": people,
+        "documents": documents,
+    }
 
 
 @router.post("/load")
 def load(db: Session = Depends(get_db), who: Actor = Depends(current_actor)) -> dict:
     require(who, WORLD_LOAD, "load the company file drops")
-    return load_world(db, who)
+    result = load_world(db, who)
+    # The API answers with the status and the headcount; which world and whether it was restored stay internal.
+    return {"status": result["status"], "people": result["people"]}
 
 
 @router.post("/drops")

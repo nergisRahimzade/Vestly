@@ -1,6 +1,6 @@
 """Score the close against the answer key.
 
-    python -m app.eval.score --period 2026-06 --runs 3 [--json report.json]
+    python -m app.eval.score [--world company|cast] [--period 2026-10] --runs 3 [--json report.json]
 
 Every run starts from a fresh copy of the company. A case counts as caught only if all
 runs handle it as the key expects, the same way each time. Exits 1 if any target is missed.
@@ -18,14 +18,14 @@ from app.eval.runner import run_close  # noqa: E402
 from app.eval.scorer import TARGETS, load_key, run_as_dict, score  # noqa: E402
 
 
-def score_period(period: str, runs: int = 3, key: dict | None = None, model=None) -> tuple[dict, list]:
+def score_period(period: str, runs: int = 3, key: dict | None = None, model=None, world: str | None = None) -> tuple[dict, list]:
     from app.errors import doing
 
     results = []
     for number in range(1, runs + 1):
         with doing("running a scored close", period=period, run=number):
-            results.append(run_close(period, model))
-    return score(key or load_key(), results), results
+            results.append(run_close(period, model, world))
+    return score(key or load_key(world=world or os.environ.get("VESTLY_WORLD", "company")), results), results
 
 
 def render(report: dict) -> str:
@@ -60,13 +60,15 @@ def render(report: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score Vestly's close against the answer key.")
-    parser.add_argument("--period", default="2026-06")
+    parser.add_argument("--world", choices=("company", "cast"), default=os.environ.get("VESTLY_WORLD", "company"))
+    parser.add_argument("--period", help="the close to score (default: 2026-10 for the company world, 2026-06 for the cast)")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--json", type=Path, help="Also write the full report and run results here.")
     args = parser.parse_args(argv)
     if args.runs < 1:
         parser.error("--runs must be at least 1")
-    report, results = score_period(args.period, args.runs)
+    period = args.period or ("2026-10" if args.world == "company" else "2026-06")
+    report, results = score_period(period, args.runs, world=args.world)
     print(render(report))
     if args.json:
         payload = {"report": report, "runs": [run_as_dict(run) for run in results]}

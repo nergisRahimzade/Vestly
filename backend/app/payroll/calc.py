@@ -21,7 +21,8 @@ def overpaid_gross(register_gross: Decimal, paid_from: str, paid_through: str, t
     last_day = date.fromisoformat(termination_date)
     if end <= last_day:
         return Decimal("0.00")
-    extra_start = last_day + timedelta(days=1)
+    # Only the days of this pay period after the last day: someone who left years ago is overpaid this whole period, no more.
+    extra_start = max(start, last_day + timedelta(days=1))
     extra_days = (end - extra_start).days + 1
     total_days = (end - start).days + 1
     return quantize(register_gross * extra_days / total_days)

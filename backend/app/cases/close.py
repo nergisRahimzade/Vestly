@@ -20,6 +20,7 @@ from app.equity.service import draft_equity
 from app.errors import doing
 from app.ledger.errors import LedgerError
 from app.payroll.service import draft_payroll
+from app.record.evidence import record
 from app.reconcile.engine import reconcile_period
 
 PAYROLL = Actor(PAYROLL_SEAT, "agent")
@@ -32,8 +33,19 @@ def run_close(session: Session, period: str) -> dict:
         run, _ = reconcile_period(session, period, PAYROLL)
     with doing("drafting payroll", period=period):
         payroll = draft_payroll(session, period, PAYROLL)
-    with doing("drafting the equity true-up", period=period):
-        equity = draft_equity(session, period, EQUITY)
+    waiting: list[dict] = []
+    try:
+        with doing("drafting the equity true-up", period=period):
+            equity = draft_equity(session, period, EQUITY)
+    except LedgerError as exc:
+        if exc.code != "missing_reference_rate":
+            raise
+        # D14 and D20: nothing is translated at another day's rate. The true-up waits; the rest of the close goes on.
+        session.rollback()
+        equity = {"journals": []}
+        waiting.append({"step": "equity_trueup", "reason": exc.message})
+        record(session, EQUITY.handle, "close_step_waiting", "period", period, reason_code="missing_reference_rate", payload={"step": "equity_trueup", "reason": exc.message})
+        session.commit()
     with doing("opening and refreshing cases", period=period):
         cases = sync_cases(session, run.id, period)
         link_drafts(session, period)
@@ -47,6 +59,7 @@ def run_close(session: Session, period: str) -> dict:
         "cases": [as_dict(case) for case in cases],
         "funding_requests": [row.id for row in funding],
         "refused": refused,
+        "waiting": waiting,
     }
 
 

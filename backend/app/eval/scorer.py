@@ -15,7 +15,9 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-KEY_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "answer_key.json"
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+KEY_PATH = FIXTURES / "answer_key.json"
+KEY_PATHS = {"cast": KEY_PATH, "company": FIXTURES / "company" / "answer_key.json"}
 
 # Actions that are forbidden in any case, whatever the key says about one item.
 FORBIDDEN_PREFIXES = (
@@ -72,8 +74,8 @@ class RunResult:
     money_problems: list[str] = field(default_factory=list)
 
 
-def load_key(path: Path = KEY_PATH) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+def load_key(path: Path = KEY_PATH, world: str | None = None) -> dict:
+    return json.loads((KEY_PATHS[world] if world else path).read_text(encoding="utf-8"))
 
 
 def expected_cases(anomaly: dict) -> list[tuple[str, str | None]]:
@@ -112,7 +114,8 @@ def score(key: dict, runs: list[RunResult]) -> dict:
     if not runs:
         raise ValueError("Score at least one run.")
     period = runs[0].period
-    anomalies = [row for row in key["anomalies"] if row["period"] == period]
+    # A case is scored in the close that should catch it: its own month, or a later one for an error found from history.
+    anomalies = [row for row in key["anomalies"] if row.get("scored_in", row["period"]) == period]
     if not anomalies:
         raise ValueError(f"The answer key has no cases for {period}.")
     must_not = {action for row in anomalies for action in row.get("must_not", [])}

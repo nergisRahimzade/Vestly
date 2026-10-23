@@ -54,16 +54,17 @@ SELF_APPROVAL_ACCRUAL = {
 
 
 def fresh_session() -> tuple[Session, object]:
+    """A new in-memory database. Loading a world into it restores this process's snapshot after the first load."""
     engine = build_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)(), engine
 
 
-def run_close(period: str, model=None) -> RunResult:
+def run_close(period: str, model=None, world: str | None = None) -> RunResult:
     parse_period(period)
     session, engine = fresh_session()
     try:
-        load_world(session, CONTROLLER)
+        load_world(session, CONTROLLER, world)
         close_month(session, period)
         # Vestly works every open case; its reports must pass the claim checker.
         run_open_cases(session, period, model or ScriptedModel())

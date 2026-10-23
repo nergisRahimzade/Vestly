@@ -18,7 +18,10 @@ Stock expense is grant fair value divided by 48 months.
 
 from __future__ import annotations
 
+import copy
+import functools
 import json
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
@@ -272,8 +275,17 @@ def in_hr(person: dict, month: Month) -> bool:
     return person["hire_date"] <= month.end
 
 
+def final_pay_due(person: dict, month: Month) -> bool:
+    """A leaver marked final_pay is paid for the days up to their last day in the cycle that holds it."""
+    terminated_on = person.get("termination_date")
+    if not person.get("final_pay") or terminated_on is None:
+        return False
+    _start, _end, full_start, full_end = pay_window(person, month)
+    return full_start <= terminated_on <= full_end and person["hire_date"] <= terminated_on
+
+
 def on_payroll(person: dict, month: Month) -> bool:
-    return in_hr(person, month) and hr_view(person, month)[0] == "active"
+    return in_hr(person, month) and (hr_view(person, month)[0] == "active" or final_pay_due(person, month))
 
 
 def assignment(person: dict, month: Month) -> tuple[str, str, str, str]:
@@ -315,6 +327,9 @@ def pay_window(person: dict, month: Month) -> tuple[str, str, str, str]:
     start, end = full_start, full_end
     if person["hire_date"] > start:
         start = person["hire_date"]
+    terminated_on = person.get("termination_date")
+    if person.get("final_pay") and terminated_on is not None and full_start <= terminated_on < end:
+        end = terminated_on
     return start, end, full_start, full_end
 
 
@@ -446,9 +461,11 @@ def equity_row(person: dict, month: Month) -> dict:
     fair_value = Decimal(grant["fair_value"])
     vest_end = add_months(grant["date"], VEST_MONTHS)
     entity, department, _, currency = assignment(person, month)
-    if hr_view(person, month)[0] == "terminated":
+    if hr_view(person, month)[0] == "terminated" and person["termination_date"][:7] != month.period:
+        # The platform expenses the leaver's final month, like the subledger, and forfeits from the next.
         status, expense = "forfeited", Decimal("0")
-    elif vest_end <= month.start:
+    elif vest_end[:7] <= month.period:
+        # Vested out from the month of the vest end: 48 monthly expenses, not a 49th (as the subledger rules).
         status, expense = "vested", Decimal("0")
     else:
         status, expense = "vesting", straight_line(fair_value)
@@ -489,6 +506,7 @@ class Drop:
     payroll: list[dict]
     equity: list[dict]
     documents: list[dict]
+    people: list[dict] = field(default_factory=list)
     funding: list[dict] = field(default_factory=list)
     bank: list[dict] = field(default_factory=list)
     ledger_entries: list[dict] = field(default_factory=list)
@@ -503,6 +521,13 @@ class Plant:
     name: str
     stage: str
     apply: Callable[[Drop], None]
+
+
+def _person(drop: Drop, employee_number: str) -> dict:
+    for person in drop.people:
+        if person["employee_number"] == employee_number:
+            return person
+    raise KeyError(employee_number)
 
 
 def _one(rows: list[dict], key: str, value: str) -> dict:
@@ -521,9 +546,9 @@ def paid_past_termination(employee_number: str, paid_through: str) -> Plant:
     def apply(drop: Drop) -> None:
         row = _one(drop.payroll, "employee_number", employee_number)
         row["pay_period_end"] = paid_through
-        rate = monthly_rate(person_by_number(employee_number), drop.month)
+        rate = monthly_rate(_person(drop, employee_number), drop.month)
         worked = inclusive_days(row["pay_period_start"], paid_through)
-        full = inclusive_days(*pay_window(person_by_number(employee_number), drop.month)[2:])
+        full = inclusive_days(*pay_window(_person(drop, employee_number), drop.month)[2:])
         set_gross(row, (rate * worked / full).quantize(CENT))
 
     return Plant(f"paid_past_termination:{employee_number}", "sources", apply)
@@ -626,7 +651,7 @@ def stale_home_entity(employee_number: str) -> Plant:
     """Payroll and equity still sit in the old entity after HR recorded a transfer."""
 
     def apply(drop: Drop) -> None:
-        person = person_by_number(employee_number)
+        person = _person(drop, employee_number)
         home = person["entity_code"]
         for row in (drop.payroll, drop.equity):
             item = _one(row, "employee_number", employee_number)
@@ -944,16 +969,22 @@ def build_drop(period: str, plants: list[Plant] | None = None, closed: bool | No
         plants = DEFAULT_PLANTS.get(period, [])
     if closed is None:
         closed = MONTHS.get(period, {}).get("closed", False)
+    return _build(month, PEOPLE, plants, closed)
+
+
+def _build(month: Month, people: list[dict], plants: list[Plant], closed: bool) -> dict:
+    period = month.period
     unknown = [plant.stage for plant in plants if plant.stage not in ("sources", "funding", "bank", "ledger")]
     if unknown:
         raise ValueError(f"Unknown plant stage {unknown[0]!r}")
 
     drop = Drop(
         month=month,
-        hr=[hr_row(person, month) for person in PEOPLE if in_hr(person, month)],
-        payroll=[payroll_row(person, month) for person in PEOPLE if on_payroll(person, month)],
-        equity=[equity_row(person, month) for person in PEOPLE if has_grant(person, month)],
+        hr=[hr_row(person, month) for person in people if in_hr(person, month)],
+        payroll=[payroll_row(person, month) for person in people if on_payroll(person, month)],
+        equity=[equity_row(person, month) for person in people if has_grant(person, month)],
         documents=[{"system": "rate_card", "title": "Employer contribution rate card", "body": rate_card_body()}],
+        people=people,
     )
     for plant in plants:
         if plant.stage == "sources":
@@ -1055,29 +1086,37 @@ def write_signed_grants() -> None:
         path.write_text(signed_grant_text(person), encoding="utf-8", newline="\n")
 
 
+def comp_actions(people: list[dict]) -> list[dict]:
+    """Approved salary changes. Each raise's previous rate is the rate before it; an unapproved raise is not here."""
+    actions = []
+    for person in people:
+        previous = person["monthly_rate"]
+        for item in sorted(person.get("raises", []), key=lambda raise_: raise_["effective"]):
+            if not item.get("unapproved"):
+                actions.append(
+                    {
+                        "action_id": f"COMP-{person['employee_number']}-{item['effective']}",
+                        "employee_number": person["employee_number"],
+                        "legal_name": person["legal_name"],
+                        "kind": "salary_change",
+                        "effective": item["effective"],
+                        "entered": item["entered"],
+                        "entered_by": item["entered_by"],
+                        "approved_by": item["approved_by"],
+                        "previous_monthly_rate": previous,
+                        "monthly_rate": item["monthly_rate"],
+                        "currency": CURRENCIES[person["entity_code"]],
+                    }
+                )
+            previous = item["monthly_rate"]
+    return actions
+
+
 def write_comp_actions() -> None:
     directory = actions_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    actions = []
-    for person in PEOPLE:
-        for item in person.get("raises", []):
-            actions.append(
-                {
-                    "action_id": f"COMP-{person['employee_number']}-{item['effective']}",
-                    "employee_number": person["employee_number"],
-                    "legal_name": person["legal_name"],
-                    "kind": "salary_change",
-                    "effective": item["effective"],
-                    "entered": item["entered"],
-                    "entered_by": item["entered_by"],
-                    "approved_by": item["approved_by"],
-                    "previous_monthly_rate": person["monthly_rate"],
-                    "monthly_rate": item["monthly_rate"],
-                    "currency": CURRENCIES[person["entity_code"]],
-                }
-            )
     path = directory / "2026.json"
-    path.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8", newline="\n")
+    path.write_text(json.dumps(comp_actions(PEOPLE), indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def write_fixtures() -> None:
@@ -1088,6 +1127,337 @@ def write_fixtures() -> None:
         path.write_text(canonical(build_drop(period)), encoding="utf-8", newline="\n")
     write_signed_grants()
     write_comp_actions()
+    company_manifest_path().parent.mkdir(parents=True, exist_ok=True)
+    company_manifest_path().write_text(json.dumps(company_manifest(), indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+# ================================================================ the whole company (D21, D22)
+#
+# About 300 people across the three entities and four departments, hired from 2018, with monthly
+# drops from January 2022 to October 2026: January 2022 to September 2026 arrive closed (booked by
+# the old process), October 2026 is the open month. The cast is re-timed so the scored cases happen
+# in October; seven named background people carry errors only four years of history can show.
+# Seeded, so the same company comes out every time.
+
+COMPANY_FIRST = "2022-01"
+COMPANY_OPEN = "2026-10"
+COMPANY_CLOCK_START = "2026-11-02"
+COMPANY_SEED = 20260101
+HEADCOUNT = {"US": 140, "UK": 85, "DE": 60}
+DEPARTMENT_WEIGHTS = (("Engineering", 40), ("Product", 20), ("GTM", 25), ("G&A", 15))
+PAY_BANDS = {"US": (7000, 19000), "UK": (4500, 11000), "DE": (5000, 12000)}
+HIRE_YEARS = ((2018, 10), (2019, 12), (2020, 13), (2021, 20), (2022, 15), (2023, 12), (2024, 10), (2025, 6), (2026, 2))
+FIRST_NAMES = (
+    "Aiden", "Beatrice", "Caleb", "Daria", "Elias", "Fatima", "Gabriel", "Hana", "Isaac", "Julia", "Kofi", "Leah",
+    "Mateo", "Nora", "Oscar", "Paula", "Quentin", "Rosa", "Samir", "Tara", "Umar", "Vera", "Wesley", "Ximena",
+    "Yusuf", "Zoe", "Anton", "Bianca", "Cyrus", "Delia", "Emil", "Freja", "Goran", "Helga", "Ivo", "Jana", "Karim",
+    "Lena", "Milo", "Nadia", "Otto", "Priyanka", "Rafael", "Selin", "Tobias", "Ulla", "Viktor", "Wanda", "Yara",
+)
+LAST_NAMES = (
+    "Abbott", "Bauer", "Castro", "Dimitrov", "Ellis", "Fontaine", "Garcia", "Huber", "Ibrahim", "Jensen", "Kowalski",
+    "Lambert", "Moreno", "Novak", "Okafor", "Petersen", "Quinn", "Richter", "Sato", "Tanaka", "Unger", "Vogel",
+    "Walsh", "Xu", "Young", "Zimmer", "Adeyemi", "Brennan", "Cho", "Dubois", "Eriksen", "Fischer-Lang", "Grant",
+    "Haddad", "Iversen", "Jovanovic", "Klein", "Lindgren", "Mensah", "Nakamura", "Olsen", "Park", "Rossi-Bell",
+    "Schmidt", "Torres", "Ueda", "Varga", "Weber-Stein", "Yilmaz",
+)
+COMPANY_SAM = {**SAM_ORTIZ, "hire_date": "2026-10-01"}
+
+# Seven named background people. Each carries one error that only the history shows.
+HISTORY_PEOPLE: list[dict] = [
+    {   # H4: left in June 2024 after the cliff; the platform kept expensing the 2022 grant until its vest end.
+        "employee_number": "NL-US-241", "legal_name": "Victor Lindqvist", "entity_code": "US", "department": "Engineering",
+        "hire_date": "2021-09-13", "monthly_rate": "14500.00", "bank_account": "1004002410",
+        "termination_date": "2024-06-14", "termination_recorded_on": "2024-06-14", "final_pay": True,
+        "grant": {"number": "GR-US-241", "date": "2022-03-01", "fair_value": "48000.00"},
+    },
+    {   # J1: left in May 2023, then paid again in July 2026.
+        "employee_number": "NL-US-242", "legal_name": "Marcus Bell", "entity_code": "US", "department": "GTM",
+        "hire_date": "2020-02-03", "monthly_rate": "9800.00", "bank_account": "1004002420",
+        "termination_date": "2023-05-19", "termination_recorded_on": "2023-05-19", "final_pay": True,
+        "grant": {"number": "GR-US-242", "date": "2020-02-03", "fair_value": "28800.00"},
+    },
+    {   # A1: hired in August 2026 with the bank account Marcus Bell was paid to until 2023.
+        "employee_number": "NL-US-243", "legal_name": "Elena Petrova", "entity_code": "US", "department": "Product",
+        "hire_date": "2026-08-03", "monthly_rate": "11200.00", "bank_account": "1004002420",
+    },
+    {   # S1: an approved raise in 2024, then a raise HR keyed in 2025 that nobody approved.
+        "employee_number": "NL-US-244", "legal_name": "Chloe Martin", "entity_code": "US", "department": "GTM",
+        "hire_date": "2021-04-05", "monthly_rate": "9000.00", "bank_account": "1004002440",
+        "raises": [
+            {"effective": "2024-04-01", "monthly_rate": "9450.00", "entered": "2024-03", "entered_by": "sam.kerr", "approved_by": "lee.park"},
+            {"effective": "2025-03-01", "monthly_rate": "10400.00", "entered": "2025-02", "entered_by": "sam.kerr", "approved_by": None, "unapproved": True},
+        ],
+        "grant": {"number": "GR-US-244", "date": "2021-04-05", "fair_value": "33600.00"},
+    },
+    {   # S2: GTM in HR, coded to Engineering on the register from September 2026.
+        "employee_number": "NL-US-245", "legal_name": "Diego Alvarez", "entity_code": "US", "department": "GTM",
+        "hire_date": "2022-08-01", "monthly_rate": "8800.00", "bank_account": "1004002450",
+        "grant": {"number": "GR-US-245", "date": "2022-08-01", "fair_value": "28800.00"},
+    },
+    {   # A2: August 2026 net pay sent twice.
+        "employee_number": "NL-DE-161", "legal_name": "Jonas Brandt", "entity_code": "DE", "department": "Engineering",
+        "hire_date": "2022-05-02", "monthly_rate": "7400.00", "bank_account": "3004001610",
+        "grant": {"number": "GR-DE-161", "date": "2022-05-02", "fair_value": "28800.00"},
+    },
+    {   # M1: hired in September 2026; the provider left him off the September register, so he was not paid.
+        "employee_number": "NL-US-246", "legal_name": "Hugo Laurent", "entity_code": "US", "department": "Engineering",
+        "hire_date": "2026-09-08", "monthly_rate": "12500.00", "bank_account": "1004002460",
+    },
+    {   # J2: July 2026 employer pension at 3% instead of 5%, in a month already closed.
+        "employee_number": "NL-UK-186", "legal_name": "Freya Lawson", "entity_code": "UK", "department": "Engineering",
+        "hire_date": "2021-11-01", "monthly_rate": "7200.00", "bank_account": "2004001860",
+        "grant": {"number": "GR-UK-186", "date": "2021-11-01", "fair_value": "28800.00"},
+    },
+]
+
+
+def company_periods() -> list[str]:
+    periods, current = [], COMPANY_FIRST
+    while current <= COMPANY_OPEN:
+        periods.append(current)
+        current = add_months(f"{current}-01", 1)[:7]
+    return periods
+
+
+def company_cast() -> list[dict]:
+    """The cast, re-timed so the scored cases happen in October 2026 (D21)."""
+    people = copy.deepcopy(PEOPLE)
+    by_number = {person["employee_number"]: person for person in people}
+    by_number["NL-US-004"]["raises"] = [{**by_number["NL-US-004"]["raises"][0], "effective": "2026-08-01", "entered": "2026-10"}]
+    by_number["NL-DE-004"]["transfers"] = [{**by_number["NL-DE-004"]["transfers"][0], "effective": "2026-10-01"}]
+    by_number["NL-UK-004"]["hire_date"] = "2026-10-02"
+    return people
+
+
+def _pick(rng: random.Random, weighted) -> object:
+    total = sum(weight for _value, weight in weighted)
+    roll = rng.uniform(0, total)
+    for value, weight in weighted:
+        roll -= weight
+        if roll <= 0:
+            return value
+    return weighted[-1][0]
+
+
+def _round50(amount: float) -> str:
+    return f"{int(round(amount / 50.0)) * 50}.00"
+
+
+def _background(rng: random.Random, taken_names: set[str], taken_accounts: set[str]) -> list[dict]:
+    people = []
+    digit = {"US": "1", "UK": "2", "DE": "3"}
+    for entity, count in HEADCOUNT.items():
+        for index in range(count):
+            number = f"NL-{entity}-{101 + index:03d}"
+            while True:
+                name = f"{rng.choice(FIRST_NAMES)} {rng.choice(LAST_NAMES)}"
+                if name not in taken_names:
+                    taken_names.add(name)
+                    break
+            year = _pick(rng, HIRE_YEARS)
+            month = rng.randint(1, 8 if year == 2026 else 12)
+            hire = date(year, month, rng.randint(1, 25)).isoformat()
+            low, high = PAY_BANDS[entity]
+            rate = Decimal(_round50(rng.uniform(low, high)))
+            while True:
+                account = f"{digit[entity]}0{rng.randrange(10**7, 10**8)}"
+                if account not in taken_accounts:
+                    taken_accounts.add(account)
+                    break
+            person = {
+                "employee_number": number,
+                "legal_name": name,
+                "entity_code": entity,
+                "department": _pick(rng, DEPARTMENT_WEIGHTS),
+                "hire_date": hire,
+                "monthly_rate": f"{rate:.2f}",
+                "bank_account": account,
+            }
+            # Raises every April after a first full year, approved by HR ops, keyed the month before.
+            raises, current = [], rate
+            for raise_year in range(max(int(hire[:4]) + 1, 2022), 2027):
+                if f"{raise_year}-04-01" <= add_months(hire, 10) or rng.random() > 0.75:
+                    continue
+                current = Decimal(_round50(float(current) * rng.uniform(1.03, 1.06)))
+                raises.append({
+                    "effective": f"{raise_year}-04-01", "monthly_rate": f"{current:.2f}", "entered": f"{raise_year}-03",
+                    "entered_by": "sam.kerr", "approved_by": "lee.park",
+                })
+            if raises:
+                person["raises"] = raises
+            # Some leave, always after their first year and by September 2026, with a prorated final pay.
+            earliest = add_months(hire, 13)
+            if rng.random() < 0.13 and earliest <= "2026-09-01":
+                first, last = date.fromisoformat(earliest), date(2026, 9, 1)
+                day = first + (last - first) * rng.random()
+                person["termination_date"] = date(day.year, day.month, min(day.day, 25)).isoformat()
+                person["termination_recorded_on"] = person["termination_date"]
+                person["final_pay"] = True
+                person["raises"] = [item for item in raises if item["effective"] <= person["termination_date"]]
+            # Most get a grant at hire, four-year vesting, board approved.
+            if rng.random() < 0.8:
+                person["grant"] = {"number": f"GR-{entity}-{101 + index:03d}", "date": hire, "fair_value": f"{rng.randint(5, 20) * 4800}.00"}
+            people.append(person)
+    # A few moved between entities in 2023-2025; payroll, the platform and HR all followed.
+    movers = [person for person in people if "termination_date" not in person and person["hire_date"] < "2022-06-01"][:3]
+    targets = {"US": "UK", "UK": "DE", "DE": "US"}
+    for person, month in zip(movers, ("2023-07-01", "2024-02-01", "2025-05-01")):
+        target = targets[person["entity_code"]]
+        while True:
+            account = f"{digit[target]}0{rng.randrange(10**7, 10**8)}"
+            if account not in taken_accounts:
+                taken_accounts.add(account)
+                break
+        person["transfers"] = [{"effective": month, "entity_code": target, "department": person["department"], "bank_account": account}]
+    return people
+
+
+@functools.cache
+def _company_people() -> tuple[dict, ...]:
+    rng = random.Random(COMPANY_SEED)
+    cast = company_cast()
+    taken_names = {person["legal_name"] for person in cast + HISTORY_PEOPLE} | {COMPANY_SAM["legal_name"]}
+    taken_accounts = {person["bank_account"] for person in cast + HISTORY_PEOPLE} | {"9911882277", "9911002002"}
+    return tuple(cast + copy.deepcopy(HISTORY_PEOPLE) + _background(rng, taken_names, taken_accounts))
+
+
+def company_people() -> list[dict]:
+    return copy.deepcopy(list(_company_people()))
+
+
+def returning_leaver_paid(employee_number: str) -> Plant:
+    """Someone HR shows as gone for years appears on the register again, paid to their old account."""
+
+    def apply(drop: Drop) -> None:
+        drop.payroll.append(payroll_row(_person(drop, employee_number), drop.month))
+
+    return Plant(f"returning_leaver_paid:{employee_number}", "sources", apply)
+
+
+def duplicate_payment(payment_id: str) -> Plant:
+    """The provider's payment file carries one net-pay line twice, and the bank pays both."""
+
+    def apply(drop: Drop) -> None:
+        copy_row = dict(_one(drop.funding, "payment_id", payment_id))
+        copy_row["payment_id"] = f"{payment_id}-2"
+        drop.funding.append(copy_row)
+
+    return Plant(f"duplicate_payment:{payment_id}", "funding", apply)
+
+
+def dropped_from_register(employee_number: str) -> Plant:
+    """The provider leaves someone HR has hired off the register: they are not paid."""
+
+    def apply(drop: Drop) -> None:
+        drop.payroll.remove(_one(drop.payroll, "employee_number", employee_number))
+
+    return Plant(f"dropped_from_register:{employee_number}", "sources", apply)
+
+
+def department_miscoded(employee_number: str, department: str) -> Plant:
+    """The register codes a person's pay to the wrong department; HR is unchanged."""
+
+    def apply(drop: Drop) -> None:
+        _one(drop.payroll, "employee_number", employee_number)["department"] = department
+
+    return Plant(f"department_miscoded:{employee_number}", "sources", apply)
+
+
+MAYA_EMAIL_OCTOBER = email(
+    "Maya Chen bank change email",
+    [
+        "From: maya.chen@northlight.example",
+        "To: payrol1@northlight.example",
+        "Date: 2026-10-02",
+        "Subject: Payr0ll direct deposit update",
+        "",
+        "Hi payrol team,",
+        "Please updte my bank acount before the October run.",
+        "New acount: 9911882277",
+        "Routng: 222000333",
+        "Name: Maya Chen",
+        "Thnaks",
+        "",
+    ],
+)
+
+
+def company_plants(period: str) -> list[Plant]:
+    """What goes wrong in each month of the company world."""
+    plants: list[Plant] = []
+    if period >= "2024-03":
+        plants.append(unapproved_grant("GR-DE-001"))
+    if period >= "2026-01":
+        plants += [contribution_rate_break("NL-UK-001", "0.03"), vesting_typo("GR-US-002", "2027-03-01")]
+    stale = (["GR-UK-003"] if period >= "2026-01" else []) + (["GR-US-003"] if period >= "2026-04" else [])
+    if "2024-07" <= period <= "2026-02":
+        stale.append("GR-US-241")
+    if stale:
+        plants.append(stale_vesting_flag(*stale))
+    if period == "2026-03":
+        plants += [paid_past_termination("NL-US-003", paid_through="2026-03-15"), JONAH_EMAIL, JONAH_REJECTION]
+    if period == "2026-07":
+        plants += [returning_leaver_paid("NL-US-242"), contribution_rate_break("NL-UK-186", "0.03")]
+    if period == "2026-08":
+        plants.append(duplicate_payment("PAY-2026-08-NL-DE-161"))
+    if period in ("2026-09", "2026-10"):
+        plants.append(department_miscoded("NL-US-245", "Engineering"))
+    if period == "2026-09":
+        plants.append(dropped_from_register("NL-US-246"))
+    if period == COMPANY_OPEN:
+        plants += [
+            ghost_on_register(COMPANY_SAM),
+            duplicate_grant("GR-US-006", "GR-US-006-DUP"),
+            stale_home_entity("NL-DE-004"),
+            duplicate_hr_row("NL-DE-003"),
+            MAYA_EMAIL_OCTOBER,
+            diverted_funding("NL-US-001", "9911882277"),
+            uncleared_funding("PAY-2026-10-NL-US-002", "PAY-2026-10-NL-US-005"),
+            late_bank_posting("PAY-2026-10-NL-DE-002", "2026-11-01"),
+            uncleared_funding("PAY-2026-10-NL-DE-001"),
+            funding_booked_in_full("DE"),
+        ]
+    return plants
+
+
+def build_company_drop(period: str) -> dict:
+    if not COMPANY_FIRST <= period <= COMPANY_OPEN:
+        raise ValueError(f"The company world runs from {COMPANY_FIRST} to {COMPANY_OPEN}; {period} is outside it.")
+    return _build(month_of(period), list(_company_people()), company_plants(period), period < COMPANY_OPEN)
+
+
+def company_manifest() -> dict:
+    """One line per company month: the hash of its drop and its sizes. Committed, so generator drift shows."""
+    import hashlib
+
+    months = {}
+    for period in company_periods():
+        drop = build_company_drop(period)
+        months[period] = {
+            "sha256": hashlib.sha256(canonical(drop).encode("utf-8")).hexdigest(),
+            "closed": drop["close_period"],
+            "hr": len(drop["hr"]),
+            "payroll": len(drop["payroll"]),
+            "equity": len(drop["equity"]),
+            "plants": drop["plants"],
+        }
+    return {"world": "company", "first": COMPANY_FIRST, "open": COMPANY_OPEN, "people": len(_company_people()), "months": months}
+
+
+def company_manifest_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "fixtures" / "company" / "manifest.json"
+
+
+def company_static_documents() -> list[dict]:
+    """Signed grants and the approved compensation actions for the whole company, built in memory."""
+    people = company_people()
+    documents = [
+        {"system": "signed_grant", "title": person["grant"]["number"], "body": signed_grant_text(person)}
+        for person in people
+        if "grant" in person
+    ]
+    documents.append({"system": "comp_action", "title": "Compensation actions 2018-2026", "body": json.dumps(comp_actions(people), indent=2) + "\n"})
+    return documents
 
 
 if __name__ == "__main__":
