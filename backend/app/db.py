@@ -48,6 +48,7 @@ def get_db() -> Generator[Session, None, None]:
 def init_db(engine=None) -> None:
     engine = engine or ENGINE
     from app.ledger import models  # noqa: F401
+    from app.world import models as world_models  # noqa: F401
     from app.ledger.guards import install_guards
     from app.ledger.seed import seed
 

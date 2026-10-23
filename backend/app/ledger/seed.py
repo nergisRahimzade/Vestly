@@ -1,8 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ledger.chart import ACCOUNTS, ENTITIES
+from app.ledger.chart import ACCOUNTS, DEPARTMENTS, ENTITIES
 from app.ledger.models import Account, Entity
+from app.world.models import Department
 
 
 def seed(session: Session) -> None:
@@ -19,4 +20,7 @@ def seed(session: Session) -> None:
                     normal_balance=normal_balance,
                 )
             )
+    for name in DEPARTMENTS:
+        if session.scalar(select(Department).where(Department.name == name)) is None:
+            session.add(Department(name=name))
     session.flush()
