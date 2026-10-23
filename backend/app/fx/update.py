@@ -39,9 +39,7 @@ def fetch_final(session: Session, rate_date: str, *, record: bool = False, trans
     if record:
         with doing("recording the response", date=rate_date):
             RECORDED.mkdir(parents=True, exist_ok=True)
-            # newline="" keeps the provider's bytes exactly (Windows would otherwise turn 
- into 
-).
+            # newline="" keeps the provider's bytes exactly (Windows would otherwise rewrite the line endings).
             (RECORDED / f"{rate_date}.json").write_text(response.raw, encoding="utf-8", newline="")
     session.commit()
     return rate_date, "stored"
