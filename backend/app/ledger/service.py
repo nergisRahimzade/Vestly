@@ -129,6 +129,8 @@ def _translate_integrity(exc: IntegrityError, entity_code: str, period: str) -> 
         return LedgerError("separation_of_duties", "The preparer cannot review their own entry.", 403)
     if "journal_is_final" in message:
         return LedgerError("journal_is_final", "This journal can no longer change.", 409)
+    if "booking_key" in message:
+        return LedgerError("already_booked", "A live entry already books this item.", 409)
     return LedgerError("ledger_rejected", "The database rejected the journal entry.", 422)
 
 
@@ -163,11 +165,23 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
         .select_from(JournalEntry)
         .where(JournalEntry.entity_id == entity.id, JournalEntry.period_id == period_row.id)
     )
+    booking_key = payload.get("booking_key")
+    if booking_key is not None:
+        booking_key = str(booking_key).strip() or None
+    if booking_key is not None:
+        live = live_entry_for_key(session, booking_key)
+        if live is not None:
+            raise LedgerError(
+                "already_booked",
+                f"{live.number} in {period_label(live.period)} already books {booking_key}.",
+                409,
+            )
     entry = JournalEntry(
         entity=entity,
         period=period_row,
         number=f"JE-{entity.code}-{period}-{int(existing or 0) + 1:04d}",
         memo=memo,
+        booking_key=booking_key,
         status="draft",
         currency=entity.currency,
         prepared_by=prepared_by,
@@ -184,6 +198,18 @@ def _build_entry(session: Session, payload: dict, prepared_by: str) -> tuple[Jou
         ],
     )
     return entry, entity, period
+
+
+LIVE_STATUSES = ("draft", "approved", "posted")
+
+
+def live_entry_for_key(session: Session, booking_key: str) -> JournalEntry | None:
+    """The draft, approved or posted entry that already books this key, in any period."""
+    return session.scalar(
+        select(JournalEntry)
+        .where(JournalEntry.booking_key == booking_key, JournalEntry.status.in_(LIVE_STATUSES))
+        .options(selectinload(JournalEntry.period))
+    )
 
 
 def draft_entry(session: Session, payload: dict, actor: Actor) -> JournalEntry:

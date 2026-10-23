@@ -206,6 +206,7 @@ def _entity_journal(
             "entity_code": entity,
             "period": period,
             "memo": f"{EQUITY_PREFIX} {entity} stock compensation for {month_of(period).label}",
+            "booking_key": f"equity:{entity}:{period}",
             "lines": lines,
         },
         actor,

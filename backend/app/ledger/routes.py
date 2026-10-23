@@ -51,6 +51,7 @@ def journal_out(entry: JournalEntry) -> JournalOut:
         currency=entry.currency,
         period=period_label(entry.period),
         memo=entry.memo,
+        booking_key=entry.booking_key,
         status=entry.status,
         prepared_by=entry.prepared_by,
         reviewed_by=entry.reviewed_by,

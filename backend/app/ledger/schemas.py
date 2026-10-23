@@ -12,6 +12,7 @@ class JournalIn(BaseModel):
     entity_code: str
     period: str
     memo: str = Field(min_length=1, max_length=500)
+    booking_key: str | None = Field(default=None, max_length=160)
     lines: list[LineIn] = Field(min_length=2)
 
 
@@ -35,6 +36,7 @@ class JournalOut(BaseModel):
     currency: str
     period: str
     memo: str
+    booking_key: str | None
     status: str
     prepared_by: str
     reviewed_by: str | None

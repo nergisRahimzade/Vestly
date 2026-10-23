@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -54,11 +54,22 @@ class JournalEntry(Base):
     """A journal moves through draft, then approved or rejected, then posted.
 
     The preparer can never be the reviewer. That rule is a database check, not only a service rule.
+
+    booking_key names what the entry books, for example one person's overpayment from one month.
+    Only one live entry (draft, approved or posted) may hold a key, so an error is booked once,
+    in one period, however many later closes see it again.
     """
 
     __tablename__ = "journal_entries"
     __table_args__ = (
         UniqueConstraint("number", name="journal_number_unique"),
+        Index(
+            "one_live_entry_per_booking_key",
+            "booking_key",
+            unique=True,
+            sqlite_where=text("status IN ('draft', 'approved', 'posted')"),
+            postgresql_where=text("status IN ('draft', 'approved', 'posted')"),
+        ),
         CheckConstraint("status IN ('draft', 'approved', 'rejected', 'posted')", name="journal_status_known"),
         CheckConstraint("reviewed_by IS NULL OR reviewed_by <> prepared_by", name="preparer_is_not_reviewer"),
         CheckConstraint(
@@ -76,6 +87,7 @@ class JournalEntry(Base):
     period_id: Mapped[str] = mapped_column(ForeignKey("periods.id"), nullable=False)
     number: Mapped[str] = mapped_column(String(32), nullable=False)
     memo: Mapped[str] = mapped_column(String(500), nullable=False)
+    booking_key: Mapped[str | None] = mapped_column(String(160))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     prepared_by: Mapped[str] = mapped_column(String(80), nullable=False)

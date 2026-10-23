@@ -32,7 +32,7 @@ def load_world(session: Session, actor: Actor) -> dict:
         return {"status": "already_loaded", "people": _people_count(session)}
     for period in ("2026-03", "2026-06"):
         drop = json.loads((fixture_dir() / f"{period}.json").read_text(encoding="utf-8"))
-        _store_drop(session, drop)
+        store_drop(session, drop)
     load_static_evidence(session)
     session.commit()
     _derive_people(session)
@@ -59,7 +59,8 @@ def _document(system: str, period: str, title: str, body: str, received_on: str)
     )
 
 
-def _store_drop(session: Session, drop: dict) -> None:
+def store_drop(session: Session, drop: dict) -> None:
+    """Store one month's file drop as source rows. It does not post anything."""
     period = drop["period"]
     received_on = drop["received_on"]
     sections = {

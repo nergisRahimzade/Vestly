@@ -54,16 +54,16 @@ def _ids(connection):
     ).one()
 
 
-def _insert_entry(connection, ids, number: str, credit: str) -> None:
+def _insert_entry(connection, ids, number: str, credit: str, booking_key: str | None = None) -> None:
     entry_id = str(uuid4())
     connection.execute(
         text(
             """
             INSERT INTO journal_entries
-              (id, entity_id, period_id, number, memo, status, currency,
+              (id, entity_id, period_id, number, memo, booking_key, status, currency,
                prepared_by, prepared_at, reviewed_by, reviewed_at, posted_by, posted_at)
             VALUES
-              (:id, :entity_id, :period_id, :number, 'raw sql', 'posted', 'USD',
+              (:id, :entity_id, :period_id, :number, 'raw sql', :booking_key, 'posted', 'USD',
                'vestly', :posted_at, 'dana.ruiz', :posted_at, 'dana.ruiz', :posted_at)
             """
         ),
@@ -72,6 +72,7 @@ def _insert_entry(connection, ids, number: str, credit: str) -> None:
             "entity_id": ids.entity_id,
             "period_id": ids.period_id,
             "number": number,
+            "booking_key": booking_key,
             "posted_at": datetime.now(timezone.utc),
         },
     )
@@ -110,7 +111,12 @@ def test_postgres_rejects_unbalanced_entries_and_locked_periods(pg_engine):
 
     with pg_engine.begin() as connection:
         ids = _ids(connection)
-        _insert_entry(connection, ids, "JE-PG-BALANCED", "100.00")
+        _insert_entry(connection, ids, "JE-PG-BALANCED", "100.00", booking_key="payroll:overpayment:X:2026-03")
+
+    with pytest.raises(IntegrityError, match="one_live_entry_per_booking_key"):
+        with pg_engine.begin() as connection:
+            ids = _ids(connection)
+            _insert_entry(connection, ids, "JE-PG-TWICE", "100.00", booking_key="payroll:overpayment:X:2026-03")
 
     with pytest.raises(IntegrityError, match="unbalanced_journal"):
         with pg_engine.begin() as connection:

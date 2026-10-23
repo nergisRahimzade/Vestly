@@ -8,7 +8,7 @@ from app.auth.permissions import JOURNAL_DRAFT, require
 from app.ledger.errors import LedgerError
 from app.ledger.models import JournalEntry, JournalLine, Period
 from app.ledger.money import money_str
-from app.ledger.service import draft_entry, find_period, parse_period, require_entity
+from app.ledger.service import draft_entry, find_period, live_entry_for_key, parse_period, period_label, require_entity
 from app.payroll.calc import accrue_wages, accrual_days, month_length, overpaid_gross, policy_contribution, quantize
 from app.policy.loader import load_policy
 from app.world.drops import ENTITIES, ENTITY_RATES, month_of
@@ -37,6 +37,7 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
     notes: list[dict] = []
     people: list[dict] = []
     journals: list[JournalEntry] = []
+    on_file: list[dict] = []
     hr_rows = list(session.scalars(select(HrCensusRow).where(HrCensusRow.period == period)))
     payroll_rows = list(session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period == period)))
     funding_rows = list(session.scalars(select(FundingInstruction).where(FundingInstruction.period == period)))
@@ -73,21 +74,19 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
                     "note": "No wage line. Cash that already left goes to suspense.",
                 }
             )
-        wage = _wage_journal(session, period, entity, confirmed, people, actor)
+        wage = _wage_journal(session, period, entity, confirmed, people, actor, on_file)
         if wage is not None:
             journals.append(wage)
         for ghost in ghosts:
-            suspense = _suspense_journal(session, period, entity, ghost, funding_rows, actor)
+            suspense = _suspense_journal(session, period, entity, ghost, funding_rows, actor, on_file)
             if suspense is not None:
                 journals.append(suspense)
-        accrual = _uk_accrual_journal(session, period, entity, confirmed, hr_rows, actor)
+        accrual = _uk_accrual_journal(session, period, entity, confirmed, hr_rows, actor, on_file)
         if accrual is not None:
             journals.append(accrual)
 
-    overpay = _overpayment_journal(session, period, hr_rows, actor, notes)
-    if overpay is not None:
-        journals.append(overpay)
-    reversal = _uk_accrual_reversal(session, period, actor)
+    journals.extend(_overpayment_journals(session, period, hr_rows, actor, notes, on_file))
+    reversal = _uk_accrual_reversal(session, period, actor, on_file)
     if reversal is not None:
         journals.append(reversal)
 
@@ -98,6 +97,7 @@ def draft_payroll(session: Session, period: str, actor: Actor) -> dict:
         "people": people,
         "notes": notes,
         "journals": journals,
+        "already_on_file": on_file,
     }
 
 
@@ -178,13 +178,44 @@ def _lines(buckets: dict) -> list[dict]:
     return lines
 
 
-def _post_draft(session: Session, entity: str, period: str, memo: str, buckets: dict, actor: Actor) -> JournalEntry | None:
+def _post_draft(
+    session: Session,
+    entity: str,
+    period: str,
+    memo: str,
+    buckets: dict,
+    actor: Actor,
+    booking_key: str,
+    on_file: list[dict],
+) -> JournalEntry | None:
+    """Draft one journal, unless a live entry in any period already books the same key.
+
+    This period's own drafts were cleared before the run, so a live entry found here was
+    approved, posted, or drafted in another month. It is reported, not booked again.
+    """
     lines = _lines(buckets)
     if len(lines) < 2:
         return None
+    live = live_entry_for_key(session, booking_key)
+    if live is not None:
+        on_file.append(
+            {
+                "booking_key": booking_key,
+                "journal": live.number,
+                "period": period_label(live.period),
+                "status": live.status,
+            }
+        )
+        return None
     return draft_entry(
         session,
-        {"entity_code": entity, "period": period, "memo": f"{PAYROLL_PREFIX} {memo}", "lines": lines},
+        {
+            "entity_code": entity,
+            "period": period,
+            "memo": f"{PAYROLL_PREFIX} {memo}",
+            "booking_key": booking_key,
+            "lines": lines,
+        },
         actor,
     )
 
@@ -196,6 +227,7 @@ def _wage_journal(
     rows: list[PayrollRegisterRow],
     people: list[dict],
     actor: Actor,
+    on_file: list[dict],
 ) -> JournalEntry | None:
     if not rows:
         return None
@@ -212,7 +244,16 @@ def _wage_journal(
         if Decimal(person["employer_tax"]) > 0:
             _add(buckets, "2210", None, ZERO, Decimal(person["employer_tax"]))
         _add(buckets, "2220", None, ZERO, Decimal(person["employer_contribution"]))
-    return _post_draft(session, entity, period, f"{entity} wages for {month_of(period).label}", buckets, actor)
+    return _post_draft(
+        session,
+        entity,
+        period,
+        f"{entity} wages for {month_of(period).label}",
+        buckets,
+        actor,
+        f"payroll:wages:{entity}:{period}",
+        on_file,
+    )
 
 
 def _suspense_journal(
@@ -222,6 +263,7 @@ def _suspense_journal(
     ghost: PayrollRegisterRow,
     funding: list[FundingInstruction],
     actor: Actor,
+    on_file: list[dict],
 ) -> JournalEntry | None:
     cash = sum(
         (row.amount for row in funding if row.employee_number == ghost.employee_number and row.cleared),
@@ -239,6 +281,8 @@ def _suspense_journal(
         f"{entity} suspense for unconfirmed person {ghost.employee_number}",
         buckets,
         actor,
+        f"payroll:suspense:{ghost.employee_number}:{period}",
+        on_file,
     )
 
 
@@ -254,6 +298,7 @@ def _uk_accrual_journal(
     rows: list[PayrollRegisterRow],
     hr_rows: list[HrCensusRow],
     actor: Actor,
+    on_file: list[dict],
 ) -> JournalEntry | None:
     if entity != "UK":
         return None
@@ -276,10 +321,19 @@ def _uk_accrual_journal(
         _add(buckets, "5110", department, contrib, ZERO)
         _add(buckets, "2150", None, ZERO, wages)
         _add(buckets, "2160", None, ZERO, tax + contrib)
-    return _post_draft(session, entity, period, f"UK month-end accrual for {month.label}", buckets, actor)
+    return _post_draft(
+        session,
+        entity,
+        period,
+        f"UK month-end accrual for {month.label}",
+        buckets,
+        actor,
+        f"payroll:uk_accrual:{period}",
+        on_file,
+    )
 
 
-def _uk_accrual_reversal(session: Session, period: str, actor: Actor) -> JournalEntry | None:
+def _uk_accrual_reversal(session: Session, period: str, actor: Actor, on_file: list[dict]) -> JournalEntry | None:
     prior = previous_period(period)
     prior_pay = list(session.scalars(select(PayrollRegisterRow).where(PayrollRegisterRow.period == prior)))
     if not prior_pay:
@@ -314,21 +368,32 @@ def _uk_accrual_reversal(session: Session, period: str, actor: Actor) -> Journal
         f"UK accrual reversal from {month.label}",
         buckets,
         actor,
+        f"payroll:uk_accrual_reversal:{prior}",
+        on_file,
     )
 
 
-def _overpayment_journal(
+def _overpayment_journals(
     session: Session,
     period: str,
     hr_rows: list[HrCensusRow],
     actor: Actor,
     notes: list[dict],
-) -> JournalEntry | None:
+    on_file: list[dict],
+) -> list[JournalEntry]:
+    """One receivable per person and per month they were paid past their HR last day.
+
+    The key is the person and the month the pay belongs to, not the month being closed,
+    so a March overpayment is booked by the first close that sees it and by no later one.
+    """
     leavers = [row for row in hr_rows if row.status == "terminated" and row.termination_date]
-    history = list(session.scalars(select(PayrollRegisterRow)))
-    buckets: dict = {}
-    entity = None
+    history = list(session.scalars(select(PayrollRegisterRow).order_by(PayrollRegisterRow.period)))
+    journals: list[JournalEntry] = []
+    seen: set[str] = set()
     for person in leavers:
+        if person.employee_number in seen:
+            continue
+        seen.add(person.employee_number)
         paid = [
             row
             for row in history
@@ -338,9 +403,23 @@ def _overpayment_journal(
             extra = overpaid_gross(row.gross_wages, row.pay_period_start, row.pay_period_end, person.termination_date)
             if extra <= 0:
                 continue
-            entity = person.entity_code
+            buckets: dict = {}
             _add(buckets, "1200", person.department, extra, ZERO)
             _add(buckets, "5000", person.department, ZERO, extra)
+            entry = _post_draft(
+                session,
+                person.entity_code,
+                period,
+                f"Overpayment receivable for {person.legal_name}, {month_of(row.period).label} pay after the "
+                f"HR termination date, booked in {month_of(period).label}",
+                buckets,
+                actor,
+                f"payroll:overpayment:{person.employee_number}:{row.period}",
+                on_file,
+            )
+            if entry is None:
+                continue
+            journals.append(entry)
             notes.append(
                 {
                     "kind": "overpayment",
@@ -354,13 +433,4 @@ def _overpayment_journal(
                     "ask": "lee.park",
                 }
             )
-    if entity is None:
-        return None
-    return _post_draft(
-        session,
-        entity,
-        period,
-        f"Overpayment receivable for days after HR termination, booked in {month_of(period).label}",
-        buckets,
-        actor,
-    )
+    return journals
